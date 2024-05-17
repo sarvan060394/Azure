@@ -37,3 +37,26 @@ Mitigation: Upon detecting Redis cluster availability, the sidecar initiates rec
 
 4. Conclusion
 By meticulously addressing various failover scenarios and implementing tailored mitigations, this document establishes a robust framework for sidecar integration within complex application ecosystems. Leveraging advanced monitoring, fault tolerance, and automation techniques ensures enhanced resilience, scalability, and performance, thereby fortifying the foundation of modern distributed systems architecture.
+______________\\\
+
+import os
+import redis
+import time
+
+def check_redis_cluster(redis_host, redis_port):
+    try:
+        r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
+        # Check connection
+        r.ping()
+        print("Redis cluster is up and running")
+    except redis.ConnectionError:
+        print("Redis cluster is down")
+
+if __name__ == "__main__":
+    # Get Redis host and port from environment variables
+    redis_host = os.getenv('REDIS_HOST', 'localhost')
+    redis_port = int(os.getenv('REDIS_PORT', 6379))
+
+    while True:
+        check_redis_cluster(redis_host, redis_port)
+        time.sleep(60)  # Check every 60 seconds
