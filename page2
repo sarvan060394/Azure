@@ -60,3 +60,34 @@ if __name__ == "__main__":
     while True:
         check_redis_cluster(redis_host, redis_port)
         time.sleep(60)  # Check every 60 seconds
+----------
+
+import os
+import time
+from rediscluster import RedisCluster
+import redis
+
+def check_redis_cluster(redis_host, redis_port, use_cluster):
+    try:
+        if use_cluster:
+            # Assuming redis_host is a comma-separated list of hosts for the cluster
+            startup_nodes = [{"host": host, "port": redis_port} for host in redis_host.split(",")]
+            r = RedisCluster(startup_nodes=startup_nodes, decode_responses=True, skip_full_coverage_check=True)
+        else:
+            r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
+        
+        # Check connection
+        r.ping()
+        print("Redis cluster is up and running")
+    except (redis.ConnectionError, redis.exceptions.RedisClusterException) as e:
+        print(f"Redis cluster is down: {e}")
+
+if __name__ == "__main__":
+    # Get Redis host and port from environment variables
+    redis_host = os.getenv('REDIS_HOST', 'localhost')
+    redis_port = int(os.getenv('REDIS_PORT', 6379))
+    use_cluster = os.getenv('USE_CLUSTER', 'false').lower() == 'true'
+
+    while True:
+        check_redis_cluster(redis_host, redis_port, use_cluster)
+        time.sleep(60)  # Check every 60 seconds
