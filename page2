@@ -39,54 +39,6 @@ Mitigation: Upon detecting Redis cluster availability, the sidecar initiates rec
 By meticulously addressing various failover scenarios and implementing tailored mitigations, this document establishes a robust framework for sidecar integration within complex application ecosystems. Leveraging advanced monitoring, fault tolerance, and automation techniques ensures enhanced resilience, scalability, and performance, thereby fortifying the foundation of modern distributed systems architecture.
 ______________\\\
 
-import os
-import redis
-import time
-
-def check_redis_cluster(redis_host, redis_port):
-    try:
-        r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
-        # Check connection
-        r.ping()
-        print("Redis cluster is up and running")
-    except redis.ConnectionError:
-        print("Redis cluster is down")
-
-if __name__ == "__main__":
-    # Get Redis host and port from environment variables
-    redis_host = os.getenv('REDIS_HOST', 'localhost')
-    redis_port = int(os.getenv('REDIS_PORT', 6379))
-
-    while True:
-        check_redis_cluster(redis_host, redis_port)
-        time.sleep(60)  # Check every 60 seconds
-----------
-
-import time
-from rediscluster import RedisCluster
-from redis.exceptions import ConnectionError
-
-def check_redis_standalone(redis_host, redis_port):
-    try:
-        # Use RedisCluster to connect to a single node (standalone)
-        startup_nodes = [{"host": redis_host, "port": redis_port}]
-        r = RedisCluster(startup_nodes=startup_nodes, decode_responses=True, skip_full_coverage_check=True)
-        
-        # Check connection
-        r.ping()
-        print("Redis is up and running")
-    except ConnectionError:
-        print("Redis is down")
-
-if __name__ == "__main__":
-    # Define Redis host and port
-    redis_host = 'localhost'  # Change to your Redis host if different
-    redis_port = 6379         # Change to your Redis port if different
-
-    while True:
-        check_redis_standalone(redis_host, redis_port)
-        time.sleep(60)  # Check every 60 seconds
-
 -------------------------------------
 
 from flask import Flask, jsonify
@@ -147,5 +99,38 @@ def check_redis():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
+------------------------------------------------------------------------
+
+Check redis standalone continuously:
+
+import redis
+import time
+import logging
+
+# Configure logging
+logging.basicConfig(filename='redis_status.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+# Define Redis host and port
+redis_host = 'localhost'  # Change to your Redis host if different
+redis_port = 6379         # Change to your Redis port if different
+
+def check_redis_standalone():
+    try:
+        r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
+        r.ping()
+        return True
+    except redis.ConnectionError:
+        return False
+
+def monitor_redis():
+    while True:
+        if not check_redis_standalone():
+            logging.info("Redis is down")
+        else:
+            logging.info("Redis is up and running")
+        time.sleep(60)  # Check every 60 seconds
+
+if __name__ == "__main__":
+    monitor_redis()
 
 
