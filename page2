@@ -130,6 +130,33 @@ def monitor_redis():
             logging.info("Redis is up and running")
         time.sleep(60)  # Check every 60 seconds
 
+--------------------------------------------------------------
+
+import redis
+import time
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
+REDIS_HOST = 'your_redis_host'
+REDIS_PORT = 6379
+
+def check_redis():
+    try:
+        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+        if r.ping():
+            logging.info("Redis server is up.")
+        else:
+            logging.warning("Redis server is down.")
+    except redis.ConnectionError:
+        logging.error("Redis server is down.")
+
+if __name__ == "__main__":
+    while True:
+        check_redis()
+        time.sleep(10)  # Check every 10 seconds
+
+
 if __name__ == "__main__":
     monitor_redis()
 
