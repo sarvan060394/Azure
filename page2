@@ -86,3 +86,36 @@ if __name__ == "__main__":
     while True:
         check_redis_standalone(redis_host, redis_port)
         time.sleep(60)  # Check every 60 seconds
+
+-------------------------------------
+
+from flask import Flask, jsonify
+from rediscluster import RedisCluster
+from redis.exceptions import ConnectionError
+
+app = Flask(__name__)
+
+# Define Redis host and port
+redis_host = 'localhost'  # Change to your Redis host if different
+redis_port = 6379         # Change to your Redis port if different
+
+def check_redis_standalone():
+    try:
+        # Use RedisCluster to connect to a single node (standalone)
+        startup_nodes = [{"host": redis_host, "port": redis_port}]
+        r = RedisCluster(startup_nodes=startup_nodes, decode_responses=True, skip_full_coverage_check=True)
+        
+        # Check connection
+        r.ping()
+        return "Redis is up and running"
+    except ConnectionError:
+        return "Redis is down"
+
+@app.route('/check_redis')
+def check_redis():
+    status = check_redis_standalone()
+    return jsonify(status=status)
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)
+
