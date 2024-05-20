@@ -194,6 +194,48 @@ if __name__ == "__main__":
 
     # Run the Flask app
     app.run(host='0.0.0.0', port=80)
+-----------------------------------------------------------------------------
+Hitting sidecar endpoint from python:
+-----------------------------------------------------------------------------
+
+from flask import Flask, request
+from apscheduler.schedulers.background import BackgroundScheduler
+import requests
+import redis
+import os
+
+app = Flask(__name__)
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+REDIS_HOST = os.getenv('REDIS_HOST', 'redis-server-host')
+REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+SIDECAR_URL = os.getenv('SIDECAR_URL', 'http://sidecar:5000/restart')
+
+def check_redis():
+    try:
+        r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
+        r.ping()
+        print("Redis is back online")
+        notify_sidecar()
+        scheduler.remove_job('redis_monitor')
+    except redis.ConnectionError:
+        print("Redis still down. Checking again in 5 seconds...")
+
+def notify_sidecar():
+    response = requests.post(SIDECAR_URL)
+    if response.status_code == 200:
+        print("Notified sidecar to restart")
+    else:
+        print("Failed to notify sidecar")
+
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    scheduler.add_job(check_redis, 'interval', seconds=5, id='redis_monitor')
+    return "Started monitoring Redis", 200
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)
 
 
 
