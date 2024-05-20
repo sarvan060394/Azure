@@ -155,9 +155,45 @@ if __name__ == "__main__":
     while True:
         check_redis()
         time.sleep(10)  # Check every 10 seconds
+------------------------------------------------------------------------------
 
+from flask import Flask
+import redis
+import threading
+import time
+import logging
+
+app = Flask(__name__)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
+REDIS_HOST = 'your_redis_host'
+REDIS_PORT = 6379
+CHECK_INTERVAL = 10  # Check every 10 seconds
+
+def check_redis():
+    while True:
+        try:
+            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+            if r.ping():
+                log_message = "Redis server is up."
+                logging.info(log_message)
+            else:
+                log_message = "Redis server is down."
+                logging.warning(log_message)
+        except redis.ConnectionError:
+            log_message = "Redis server is down."
+            logging.error(log_message)
+        time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    monitor_redis()
+    # Start the Redis check in a separate thread
+    thread = threading.Thread(target=check_redis)
+    thread.daemon = True
+    thread.start()
+
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=80)
+
 
 
