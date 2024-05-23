@@ -12,3 +12,43 @@ def restart():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
+------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:6.2
+        volumeMounts:
+        - name: redis-config
+          mountPath: /usr/local/etc/redis/redis.conf
+          subPath: redis.conf
+        env:
+        - name: REDIS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: REDIS_USERNAME
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: REDIS_PASSWORD
+        args: ["sh", "-c", "envsubst < /usr/local/etc/redis/redis.conf > /usr/local/etc/redis/redis-subst.conf && redis-server /usr/local/etc/redis/redis-subst.conf"]
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+
