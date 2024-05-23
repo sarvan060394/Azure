@@ -52,3 +52,18 @@ spec:
         configMap:
           name: redis-config
 
+--------------//
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+data:
+  redis.conf: |
+    # Redis configuration file
+
+    # Set the password for Redis authentication
+    requirepass ${REDIS_PASSWORD}
+
+    # For Redis 6.0 and above, you can also use ACL (Access Control List) for more advanced user management
+    user ${REDIS_USERNAME} on >${REDIS_PASSWORD} ~* +@all
