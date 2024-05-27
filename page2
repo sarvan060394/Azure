@@ -410,6 +410,84 @@ if __name__ == "__main__":
   print(f"Using requests library version: {requests_version}")
   app.run(host="0.0.0.0", port=5000)
 
+-------------------------------------------------------------------------
+
+import redis
+from flask import Flask, request, jsonify
+
+# Redis configuration
+REDIS_HOST = "localhost"  # Replace with your Redis host
+REDIS_PORT = 6379
+REDIS_RETRY_COUNT = 3
+
+# Resource monitor URL
+RESOURCE_MONITOR_URL = "http://resourcemonitor.com/start-monitoring"
+
+app = Flask(__name__)
+
+# Flag to control error triggering
+trigger_error = False
+
+
+def connect_to_redis():
+  """Establishes a connection to the Redis server with retries."""
+  for attempt in range(REDIS_RETRY_COUNT):
+    try:
+      r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+      r.ping()  # Test connection
+      return True
+    except redis.exceptions.ConnectionError as e:
+      if attempt == REDIS_RETRY_COUNT - 1:
+        print(f"Failed to connect to Redis after {attempt + 1} attempts: {e}")
+        # Trigger resource monitor
+        trigger_resource_monitor()
+      else:
+        print(f"Retrying Redis connection (attempt {attempt + 1}/{REDIS_RETRY_COUNT})...")
+  return False  # Connection failed
+
+
+def trigger_resource_monitor():
+  """Sends a request to the resource monitor URL."""
+  try:
+    response = requests.get(RESOURCE_MONITOR_URL)
+    response.raise_for_status()  # Raise exception for non-2xx status codes
+    print(f"Successfully triggered resource monitoring: {response.text}")
+  except requests.exceptions.RequestException as e:
+    print(f"Failed to trigger resource monitor: {e}")
+
+
+@app.route("/healthz")
+def liveness_probe():
+  """Liveness probe endpoint to check app health."""
+  if connect_to_redis():
+    return jsonify({"status": "healthy"}), 200
+  else:
+    return jsonify({"error": "Failed to connect to Redis"}), 500
+
+
+@app.route("/teststart")
+def test_restart():
+  """Endpoint to trigger an error for liveness probe."""
+  global trigger_error
+  trigger_error = True
+  return jsonify({"message": "Error triggered"}), 400
+
+
+@app.route("/connect")
+def connect_info():
+  """Endpoint to attempt Redis connection."""
+  if connect_to_redis():
+    return jsonify({"status": "connected to Redis"}), 200
+  else:
+    return jsonify({"error": "Failed to connect to Redis"}), 500
+
+
+if __name__ == "__main__":
+  from requests import __version__ as requests_version
+  print(f"Using requests library version: {requests_version}")
+  app.run(host="0.0.0.0", port=5000)
+
+
 
 
 
