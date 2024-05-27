@@ -287,6 +287,33 @@ def start_monitoring():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
+------------------------------------------------------------------------
+
+sidecar - Restart
+
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Flag to control error triggering
+trigger_error = False
+
+@app.route("/healthz")
+def liveness_probe():
+  """Liveness probe endpoint to check app health."""
+  if trigger_error:
+    return jsonify({"error": "Failing liveness probe"}), 500
+  return jsonify({"status": "healthy"}), 200
+
+@app.route("/teststart")
+def test_start():
+  """Endpoint to trigger an error for liveness probe."""
+  global trigger_error
+  trigger_error = True
+  return jsonify({"message": "Error triggered"}), 400
+
+if __name__ == "__main__":
+  app.run(host="0.0.0.0", port=5000)
 
 
 
