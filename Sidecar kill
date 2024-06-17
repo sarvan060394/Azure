@@ -67,3 +67,60 @@ data:
 
     # For Redis 6.0 and above, you can also use ACL (Access Control List) for more advanced user management
     user ${REDIS_USERNAME} on >${REDIS_PASSWORD} ~* +@all
+
+
+--------------------------------------1111
+
+import requests
+
+def call_start_monitoring(redis_host, redis_port, sidecar_url):
+    payload = {
+        'edis_host': redis_host,
+        'edis_port': redis_port,
+        'idecar_url': sidecar_url
+    }
+    response = requests.post('http://your-flask-app.com/start-monitoring', json=payload)
+    if response.status_code == 200:
+        print("Start monitoring successful!")
+    else:
+        print("Error starting monitoring:", response.text)
+
+# Example usage
+call_start_monitoring('redis.cp-1049543.svc.cluster.local', 443, 'http://sidecar-restart-cp-1049543.apps.useast16.bofa.com/teststart')
+
+-----------------------------------------
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    payload = request.get_json()
+    redis_host = payload['redis_host']
+    redis_port = payload['redis_port']
+    sidecar_url = payload['sidecar_url']
+
+    # Perform operations using the payload values
+    check_redis(redis_host, redis_port)
+    notify_sidecar(sidecar_url)
+
+    return jsonify({'message': 'Start monitoring successful!'})
+
+def check_redis(redis_host, redis_port):
+    try:
+        r = redis.StrictRedis(host=redis_host, port=redis_port)
+        r.ping()
+        print("Redis is back online")
+    except redis.ConnectionError:
+        print("Redis still down. Checking again in 5 seconds...")
+
+def notify_sidecar(sidecar_url):
+    response = requests.get(sidecar_url)
+    if response.status_code == 200:
+        print("Notified sidecar to restart")
+    else:
+        print("Failed to notify sidecar")
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
