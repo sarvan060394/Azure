@@ -1,25 +1,17 @@
-from flask import Flask, request, jsonify
+from apscheduler.schedulers.background import BackgroundScheduler
 
-app = Flask(__name__)
+scheduler = BackgroundScheduler()
+scheduler.start()
 
-@app.route('/start-monitoring', methods=['POST'])
-def start_monitoring():
-    payload = request.get_json()
-    redis_host = payload['redis_host']
-    redis_port = payload['redis_port']
-    sidecar_url = payload['sidecar_url']
-
-    # Perform operations using the payload values
-    check_redis(redis_host, redis_port)
-    notify_sidecar(sidecar_url)
-
-    return jsonify({'message': 'Start monitoring successful!'})
-
-def check_redis(redis_host, redis_port):
+def check_redis(redis_host, redis_port, sidecar_url):
     try:
         r = redis.StrictRedis(host=redis_host, port=redis_port)
         r.ping()
         print("Redis is back online")
+        print(redis_host)
+        notify_sidecar(sidecar_url)
+        if scheduler.get_job('redis_monitor'):
+            scheduler.remove_job('redis_monitor')
     except redis.ConnectionError:
         print("Redis still down. Checking again in 5 seconds...")
 
@@ -30,24 +22,17 @@ def notify_sidecar(sidecar_url):
     else:
         print("Failed to notify sidecar")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    payload = request.get_json()
+    redis_host = payload['redis_host']
+    redis_port = payload['redis_port']
+    sidecar_url = payload['sidecar_url']
+    print(redis_host)
+    print(redis_port)
+    print(sidecar_url)
 
-----------------------------------------------------------
-
-import requests
-
-def call_start_monitoring(redis_host, redis_port, sidecar_url):
-    payload = {
-        'edis_host': redis_host,
-        'edis_port': redis_port,
-        'idecar_url': sidecar_url
-    }
-    response = requests.post('http://your-flask-app.com/start-monitoring', json=payload)
-    if response.status_code == 200:
-        print("Start monitoring successful!")
-    else:
-        print("Error starting monitoring:", response.text)
-
-# Example usage
-call_start_monitoring('redis.cp-1049543.svc.cluster.local', 443, 'http://sidecar-restart-cp-1049543.apps.useast16.bofa.com/teststart')
+    job_id = 'redis_monitor'
+    scheduler.add_job(check_redis, 'interval', seconds=5, id=job_id, args=[redis_host, redis_port, sidecar_url])
+    print("Started monitoring Redis")
+    return "Monitoring started", 200
