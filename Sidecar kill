@@ -124,3 +124,24 @@ def notify_sidecar(sidecar_url):
 if __name__ == '__main__':
     app.run(debug=True)
 
+
+---------------------------1
+
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    payload = request.get_json()
+    redis_host = payload['redis_host']
+    redis_port = payload['redis_port']
+    sidecar_url = payload['sidecar_url']
+    print(redis_host)
+    print(redis_port)
+    print(sidecar_url)
+
+    # Remove any existing job with the same ID before scheduling a new one
+    scheduler.remove_job('redis_monitor')
+
+    # Schedule the job with a unique ID
+    job_id = f'redis_monitor_{redis_host}_{redis_port}'
+    scheduler.add_job(check_redis, 'interval', seconds=5, id=job_id, args=[redis_host, redis_port, sidecar_url])
+
+    return "Started monitoring Redis", 200
