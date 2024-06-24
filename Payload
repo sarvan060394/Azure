@@ -36,3 +36,73 @@ def start_monitoring():
     scheduler.add_job(check_redis, 'interval', seconds=5, id=job_id, args=[redis_host, redis_port, sidecar_url])
     print("Started monitoring Redis")
     return "Monitoring started", 200
+
+----------------------------------------------------------------------------------------------------
+
+from flask import Flask, request
+from apscheduler.schedulers.background import BackgroundScheduler
+import requests
+import redis
+
+app = Flask(__name__)
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+def check_service(service_type, service_host, service_port, sidecar_url):
+    try:
+        if service_type == 'redis':
+            r = redis.StrictRedis(host=service_host, port=service_port)
+            r.ping()
+        # Add checks for other service types (e.g., Kafka) here
+        print(f"{service_type.capitalize()} is back online")
+        notify_sidecar(sidecar_url)
+        if scheduler.get_job(f'{service_type}_monitor'):
+            scheduler.remove_job(f'{service_type}_monitor')
+    except Exception as e:
+        print(f"{service_type.capitalize()} still down. Checking again in 5 seconds... Error: {e}")
+
+def notify_sidecar(sidecar_url):
+    response = requests.get(sidecar_url)
+    if response.status_code == 200:
+        print("Notified sidecar to restart")
+    else:
+        print("Failed to notify sidecar")
+
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    payload = request.get_json()
+    service_type = payload['service_type']
+    service_host = payload['service_host']
+    service_port = payload['service_port']
+    sidecar_url = payload['sidecar_url']
+    print(service_type, service_host, service_port, sidecar_url)
+
+    job_id = f'{service_type}_monitor'
+    scheduler.add_job(check_service, 'interval', seconds=5, id=job_id, args=[service_type, service_host, service_port, sidecar_url])
+    print(f"Started monitoring {service_type}")
+    return "Monitoring started", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+---------------------------------------------------------------
+Kafka
+--------------------------------------------------------------
+
+from kafka import KafkaConsumer
+
+def check_service(service_type, service_host, service_port, sidecar_url):
+    try:
+        if service_type == 'redis':
+            r = redis.StrictRedis(host=service_host, port=service_port)
+            r.ping()
+        elif service_type == 'kafka':
+            consumer = KafkaConsumer(bootstrap_servers=f'{service_host}:{service_port}')
+            consumer.topics()  # This will throw an exception if Kafka is not reachable
+        # Add more service checks as needed
+        print(f"{service_type.capitalize()} is back online")
+        notify_sidecar(sidecar_url)
+        if scheduler.get_job(f'{service_type}_monitor'):
+            scheduler.remove_job(f'{service_type}_monitor')
+    except Exception as e:
+        print(f"{service_type.capitalize()} still down. Checking again in 5 seconds... Error: {e}")
+
