@@ -84,4 +84,29 @@ spec:
       - name: sidecar-volume
         emptyDir: {}
 
+---------------------------------
+
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route('/restart', methods=['GET'])
+def restart():
+    file_path = '/path/to/sidecar/volume/liveness-probe-file'
+    try:
+        # Create the directory if it does not exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Create the file
+        with open(file_path, 'w') as f:
+            f.write('restart')
+        return "File created to trigger restart", 200
+    except Exception as e:
+        return f"Failed to create file: {e}", 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+
+
 
