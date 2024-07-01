@@ -12,3 +12,36 @@ def restart():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+--------------------------
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sidecar
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: sidecar
+  template:
+    metadata:
+      labels:
+        app: sidecar
+    spec:
+      containers:
+      - name: sidecar-container
+        image: your-sidecar-image
+        volumeMounts:
+        - mountPath: /path/to/sidecar/volume
+          name: sidecar-volume
+        livenessProbe:
+          exec:
+            command:
+            - cat
+            - /path/to/sidecar/volume/liveness-probe-file
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: sidecar-volume
+        emptyDir: {}
