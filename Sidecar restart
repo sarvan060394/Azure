@@ -217,5 +217,26 @@ spec:
       - name: sidecar-volume
         emptyDir: {}
 
+///////////////////.......::::
+
+from flask import Flask
+import os
+
+app = Flask(__name__)
+
+@app.route('/restart', methods=['GET'])
+def restart():
+    file_path = '/mnt/data/test-file.txt'
+    if not os.path.exists(file_path):
+        return f'File {file_path} does not exist.', 404
+    
+    with open(file_path, 'a') as f:
+        f.write('This is a test file created by hitting the /restart endpoint.\n')
+    
+    return f'Message written to {file_path} successfully.', 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+
 
 
