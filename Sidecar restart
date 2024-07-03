@@ -239,4 +239,20 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 
 
+--------------
+**Summary:**  
+As per the design, we conducted a POC to identify the impediments in implementing a resource monitor to restart failed sidecars using a liveness probe.
 
+**Requirements:**
+1. Expose an endpoint in the sidecar that can be called by the resource monitor to restart the sidecar via the liveness probe:
+   - The endpoint should be capable of returning a 500 response to the liveness probe health check.
+   - The endpoint should be able to create a file in the sidecar volume that will be monitored by the liveness probe to trigger a pod restart.
+
+**Observations:**
+- This approach works fine for a single replica of the sidecar pod.
+- For multiple replicas, the request from the resource monitor is accepted or routed to one of the sidecar replicas, causing only that sidecar to restart.
+
+**Next Steps:**
+We have additional options to explore:
+- Using a headless service to broadcast a message to all sidecar replicas to restart.
+- Utilizing OpenShift admin controls to manage this scenario.
