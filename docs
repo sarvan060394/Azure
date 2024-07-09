@@ -1,0 +1,61 @@
+Monitoring Solutions Documentation
+This document describes two solutions for monitoring services using Python. The first solution uses
+threads and Redis for state management, and the second solution uses a scheduler to manage the
+monitoring jobs.
+Solution 1: Using Threads and Redis for State Management
+This solution uses Redis to keep track of which services are being monitored and ensures that only
+one monitoring task
+is running for each service in a deployment. The monitoring task runs in a separate thread and
+periodically checks
+the service status until it comes back online.
+### Steps to Implement:
+1. **Install Redis and Python Redis client library:**
+ ```bash
+ pip install redis
+ ```
+2. **Set up a Redis instance:**
+ - You can set up a Redis instance locally or use a managed Redis service.
+3. **Implement the monitoring solution:**
+ - **State Management:** Use Redis to store the state of each monitoring job. The key is a
+combination of `deployment_id` and `service_type`, and the value is either `active` or `inactive`.
+ - **Monitoring Task:** Create a function to run in a separate thread that periodically checks the
+service status. If the service is down, it logs a message and continues to monitor.
+ - **Start Monitoring Endpoint:** This endpoint starts the monitoring task if it is not already running.
+It sets the status in Redis to `active` and starts a new thread for the monitoring task.
+ - **Stop Monitoring Endpoint:** This endpoint stops the monitoring task by setting the status in
+Redis to `inactive`.
+### Benefits:
+- This solution is straightforward and does not require additional scheduling libraries.
+- It allows for flexible and dynamic state management using Redis.
+### Potential Drawbacks:
+- Managing threads can become complex with a large number of services.
+- Ensuring thread safety and handling exceptions within threads can add complexity
+
+Solution 2: Using Scheduler and Redis for State Management
+This solution uses a scheduler to manage the monitoring jobs. Each monitoring job periodically
+checks the Redis status
+until the service comes back online.
+### Steps to Implement:
+1. **Install necessary packages:**
+ ```bash
+ pip install redis flask apscheduler requests
+ ```
+2. **Set up a Redis instance:**
+ - You can set up a Redis instance locally or use a managed Redis service.
+3. **Implement the solution with a scheduler:**
+ - **Scheduler Setup:** Use the `apscheduler` library to create and manage the scheduled jobs.
+ - **State Management:** Use Redis to store the state of each monitoring job. The key is a
+combination of `deployment_id` and `service_type`, and the value is either `active` or `inactive`.
+ - **Monitoring Job:** Create a function that checks if the Redis service is online. If the Redis
+service is online, it sets the job status to `inactive` in Redis and removes the job from the scheduler.
+If the Redis service is still down, it logs a message and continues to monitor.
+ - **Start Monitoring Endpoint:** This endpoint starts the monitoring job if it is not already running. It
+sets the status in Redis to `active` and schedules a new job using the scheduler.
+ - **Stop Monitoring Endpoint:** This endpoint stops the monitoring job by setting the status in
+Redis to `inactive` and removing the job from the scheduler.
+### Benefits:
+- The scheduler handles the periodic execution of monitoring tasks, simplifying the implementation.
+- Using a scheduler can improve the scalability and manageability of monitoring multiple services.
+### Potential Drawbacks:
+- Additional dependencies are required (`apscheduler` library).
+- Handling the scheduler's lifecycle and job management can add complexity   
