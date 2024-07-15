@@ -58,4 +58,47 @@ Redis to `inactive` and removing the job from the scheduler.
 - Using a scheduler can improve the scalability and manageability of monitoring multiple services.
 ### Potential Drawbacks:
 - Additional dependencies are required (`apscheduler` library).
-- Handling the scheduler's lifecycle and job management can add complexity   
+- Handling the scheduler's lifecycle and job management can add complexity  
+
+---------------------------------------------------------------------------------------
+
+
+Broadcasting Requests to All Pods in a Kubernetes service
+Overview
+This document outlines two solutions for broadcasting a request to all pods under a headless
+service in Kubernetes. The two approaches are:
+1. Sidecar Pattern
+2. Message Queue (RabbitMQ)
+Both methods ensure that a request to the headless service results in the request being forwarded
+to all pods.
+Solution 1: Sidecar Pattern
+Overview:
+The sidecar pattern involves deploying a sidecar container alongside your main application
+container. The sidecar handles the broadcasting of requests to all pods in the headless service.
+Architecture:
+1. Main Application: Receives the initial request and forwards it to the sidecar container.
+2. Sidecar Container: Resolves the headless service to get the IPs of all pods and sends the request
+to each pod, including a final self-call.
+Advantages:
+1. Simplicity: The sidecar pattern is straightforward to implement and doesn't require additional
+infrastructure.
+2. Direct Control: You have direct control over how and when requests are broadcasted.
+Broadcasting Requests to All Pods in a service
+3. Minimal Dependencies: Only requires Python standard library and a couple of third-party libraries
+(Flask and requests).
+Solution 2: Message Queue (RabbitMQ)
+Overview:
+Using a message queue like RabbitMQ allows for a more scalable and decoupled approach. The
+main application publishes a message to a RabbitMQ queue, and each pod subscribes to the queue
+to process the message.
+Architecture:
+1. Producer: The main application sends a message to the RabbitMQ queue.
+2. Consumer: Each pod has a sidecar container that subscribes to the RabbitMQ queue and
+processes messages.
+Advantages:
+1. Scalability: The message queue can handle a large number of messages and distribute them
+efficiently.
+2. Decoupling: The producer and consumers are decoupled, allowing for more flexible and
+maintainable code.
+3. Reliability: RabbitMQ provides robust messaging guarantees, ensuring that messages are
+delivered even in the face of network or pod failures.
