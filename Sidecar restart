@@ -256,3 +256,38 @@ As per the design, we conducted a POC to identify the impediments in implementin
 We have additional options to explore:
 - Using a headless service to broadcast a message to all sidecar replicas to restart.
 - Utilizing OpenShift admin controls to manage this scenario.
+
+______________________________________________________________________________________________
+
+import socket
+import requests
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    service_name = "my-headless-service.mynamespace.svc.cluster.local"
+    port = 5000
+    endpoint = "/test"
+    
+    pod_ips = socket.gethostbyname_ex(service_name)[2]
+    
+    data = request.get_json()
+    results = []
+    
+    for ip in pod_ips:
+        url = f"http://{ip}:{port}{endpoint}"
+        response = requests.post(url, json=data)
+        results.append(f"Response from {ip}: {response.status_code}")
+
+    # Self-call to /test endpoint
+    url = f"http://localhost:{port}{endpoint}"
+    response = requests.post(url, json=data)
+    results.append(f"Response from self: {response.status_code}")
+    
+    return "Broadcast complete. Results: " + ", ".join(results), 200
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=6000)
+
