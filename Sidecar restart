@@ -291,3 +291,73 @@ def broadcast():
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=6000)
 
+
+********************************************************************************
+
+import redis
+from flask import Flask, request, jsonify
+from apscheduler.schedulers.background import BackgroundScheduler
+import requests
+import time
+
+app = Flask(__name__)
+scheduler = BackgroundScheduler()
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+
+def check_service(service_type, service_host, service_port, sidecar_url, job_id):
+    try:
+        # Check the status of the Redis service
+        if redis_client.ping():
+            print(f"{service_type} service is back online at {service_host}:{service_port}")
+            redis_client.set(job_id, 'inactive')
+            scheduler.remove_job(job_id)
+        else:
+            print(f"{service_type} service is still down at {service_host}:{service_port}")
+    except Exception as e:
+        print(f"Error checking {service_type} service at {service_host}:{service_port}: {e}")
+
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    payload = request.get_json()
+    service_type = payload['service_type']
+    service_host = payload['service_host']
+    service_port = payload['service_port']
+    sidecar_url = payload['sidecar_url']
+    deployment_id = payload['deployment_id']  # Assume this is provided in the payload
+    job_id = f'{deployment_id}_{service_type}_monitor'
+
+    # Check if the service is already being monitored
+    if redis_client.get(job_id) == b'active':
+        print(f"Monitoring job for {service_type} in deployment {deployment_id} is already running")
+        return jsonify(message="Monitoring job is already running"), 409
+
+    # Set the monitoring status in Redis
+    redis_client.set(job_id, 'active')
+
+    # Schedule the monitoring job
+    scheduler.add_job(
+        check_service, 'interval', seconds=5, id=job_id,
+        args=[service_type, service_host, service_port, sidecar_url, job_id]
+    )
+
+    print(f"Started monitoring {service_type} for deployment {deployment_id}")
+    return jsonify(message="Monitoring started"), 200
+
+@app.route('/stop-monitoring', methods=['POST'])
+def stop_monitoring():
+    payload = request.get_json()
+    service_type = payload['service_type']
+    deployment_id = payload['deployment_id']
+    job_id = f'{deployment_id}_{service_type}_monitor'
+
+    # Set the monitoring status to inactive
+    redis_client.set(job_id, 'inactive')
+    scheduler.remove_job(job_id)
+    print(f"Stopped monitoring {service_type} for deployment {deployment_id}")
+    return jsonify(message="Monitoring stopped"), 200
+
+if __name__ == "__main__":
+    scheduler.start()
+    app.run(host='0.0.0.0', port=5000)
+
+
