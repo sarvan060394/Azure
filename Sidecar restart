@@ -431,4 +431,42 @@ if __name__ == "__main__":
     scheduler.start()
     app.run(host='0.0.0.0', port=5000)
 
+----------------///---------
+import requests
+import time
 
+def restart_and_check_health(hostname: str, port: int, retry_interval: int = 5, max_retries: int = 12):
+    try:
+        # Construct the URLs for the restart and health endpoints
+        restart_url = f"http://{hostname}:{port}/restart"
+        health_url = f"http://{hostname}:{port}/health"
+        
+        # Send a request to the /restart endpoint
+        restart_response = requests.post(restart_url)
+        restart_response.raise_for_status()
+        print("Restart initiated successfully.")
+        
+        # Wait for 15 seconds before starting health checks
+        print("Waiting for 15 seconds before checking health status...")
+        time.sleep(15)
+        
+        # Check the /health endpoint periodically
+        retries = 0
+        while retries < max_retries:
+            try:
+                health_response = requests.get(health_url)
+                if health_response.status_code == 200:
+                    print("Pod is healthy.")
+                    return True
+            except requests.exceptions.RequestException as e:
+                print(f"Health check attempt {retries + 1} failed: {e}")
+            
+            # Wait before retrying
+            time.sleep(retry_interval)
+            retries += 1
+        
+        print("Pod did not become healthy within the expected time.")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred during restart: {e}")
+        return False
