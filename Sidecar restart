@@ -470,3 +470,59 @@ def restart_and_check_health(hostname: str, port: int, retry_interval: int = 5, 
     except requests.exceptions.RequestException as e:
         print(f"An error occurred during restart: {e}")
         return False
+_________________________________
+
+from flask import Flask, request
+import socket
+import requests
+import time
+
+app = Flask(__name__)
+
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    service_name = "redismonitor-headless.cp-1049543.svc.cluster.local"
+    port = 8080
+    endpoint = "/reached"
+    health_endpoint = "/health"
+    
+    initial_pod_ips = get_pod_ips(service_name)
+    data = request.get_json()
+    results = []
+    
+    for ip in initial_pod_ips:
+        url = f"http://{ip}:{port}{endpoint}"
+        print(url)
+        response = requests.post(url, json=data)
+        results.append(f"Response from {ip}: {response.status_code}")
+        
+        # Wait for 20 seconds before fetching the updated pod IP list
+        time.sleep(20)
+        
+        # After hitting the /reached endpoint, get the updated list of pod IPs
+        new_pod_ips = get_pod_ips(service_name)
+        new_ip = list(set(new_pod_ips) - set(initial_pod_ips))
+        
+        # If a new IP is found, check if the new pod is up
+        if new_ip:
+            new_ip = new_ip[0]  # Assuming only one new IP will be there
+            health_url = f"http://{new_ip}:{port}{health_endpoint}"
+            health_response = requests.get(health_url)
+            if health_response.status_code == 200:
+                print(f"Pod at {new_ip} is up and running.")
+        
+        # Update the initial pod IPs list
+        initial_pod_ips = new_pod_ips
+
+    return "Broadcast complete. Results: " + ", ".join(results), 200
+
+def get_pod_ips(service_name):
+    try:
+        pod_ips = socket.gethostbyname_ex(service_name)[2]
+    except socket.gaierror as e:
+        print(f"Error retrieving pod IPs: {e}")
+        pod_ips = []
+    return pod_ips
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=8080)
