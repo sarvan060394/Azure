@@ -526,3 +526,50 @@ def get_pod_ips(service_name):
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
+--------------------------------------
+
+import socket
+import requests
+from flask import Flask, request, jsonify
+import time
+
+app = Flask(__name__)
+
+# Function to broadcast data to all pods
+def broadcast_to_pods(service_name, port, endpoint, data):
+    pod_ips = socket.gethostbyname_ex(service_name)[2]
+    results = []
+
+    for i, ip in enumerate(pod_ips):
+        url = f"http://{ip}:{port}{endpoint}"
+        print(url)
+        
+        # Check health of the first sidecar container
+        if i == 0:
+            health_url = f"http://{ip}:{port}/health"
+            for _ in range(3):  # Try 3 times
+                time.sleep(5)  # Wait for 5 seconds
+                health_response = requests.get(health_url)
+                if health_response.status_code == 200:
+                    break
+            else:
+                return f"First sidecar container did not become healthy. Aborting restart.", 500
+        
+        response = requests.post(url, json=data)
+        results.append(f"Response from {ip}: {response.status_code}")
+    
+    return results
+
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    service_name = "redismonitor-headless.cp-1049543.svc.cluster.local"
+    port = 8080
+    endpoint = "/reached"
+    data = request.get_json()
+    
+    results = broadcast_to_pods(service_name, port, endpoint, data)
+    return jsonify(message="Broadcast complete. Results: " + ", ".join(results)), 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
