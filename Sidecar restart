@@ -637,4 +637,78 @@ def broadcast():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+----------------------------------------------------------------
+
+import socket
+import requests
+from flask import Flask, request, jsonify
+import time
+
+app = Flask(__name__)
+
+# Function to broadcast data to all pods
+def broadcast_to_pods(service_name, port, endpoint, data):
+    try:
+        pod_ips = socket.gethostbyname_ex(service_name)[2]
+    except socket.gaierror as e:
+        return f"Failed to resolve service name: {service_name}. Error: {e}", 500
+
+    results = []
+
+    for i, ip in enumerate(pod_ips):
+        print(f"Starting iteration {i} for IP: {ip}")
+        url = f"http://{ip}:{port}{endpoint}"
+        print(f"URL: {url}")
+
+        try:
+            response = requests.post(url, json=data)
+            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            results.append(f"Response from {ip}: {response.status_code}")
+        except requests.RequestException as e:
+            print(f"Failed to reach {ip}. Error: {e}")
+            results.append(f"Failed to reach {ip}: {e}")
+            continue
+
+        # After restarting the first sidecar container, check its health
+        if i == 0:
+            health_url = f"http://{ip}:{port}/health"
+            print(f"Checking health at {health_url}")
+            health_check_passed = False
+            for attempt in range(3):  # Try 3 times
+                time.sleep(5)  # Wait for 5 seconds
+                try:
+                    health_response = requests.get(health_url)
+                    if health_response.status_code == 200:
+                        health_check_passed = True
+                        print(f"Health check passed on attempt {attempt + 1}")
+                        break
+                    else:
+                        print(f"Health check failed with status code: {health_response.status_code}")
+                except requests.RequestException as e:
+                    print(f"Attempt {attempt + 1} - Failed to reach {health_url}. Error: {e}")
+            
+            if not health_check_passed:
+                print("First sidecar container did not become healthy. Aborting restart.")
+                return f"First sidecar container did not become healthy. Aborting restart.", 500
+
+        print(f"Finished iteration {i} for IP: {ip}")
+
+    return results
+
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    service_name = "redismonitor-headless.cp-1049543.svc.cluster.local"
+    port = 8080
+    endpoint = "/reached"
+    data = request.get_json()
+    
+    results = broadcast_to_pods(service_name, port, endpoint, data)
+    
+    if isinstance(results, tuple) and results[1] == 500:
+        return jsonify(message=results[0]), 500
+    
+    return jsonify(message="Broadcast complete. Results: " + ", ".join(results)), 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
 
