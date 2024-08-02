@@ -573,3 +573,68 @@ def broadcast():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
+
+--------------------------------------/////////////////////------------------------------
+
+import socket
+import requests
+from flask import Flask, request, jsonify
+import time
+
+app = Flask(__name__)
+
+# Function to broadcast data to all pods
+def broadcast_to_pods(service_name, port, endpoint, data):
+    try:
+        pod_ips = socket.gethostbyname_ex(service_name)[2]
+    except socket.gaierror as e:
+        return f"Failed to resolve service name: {service_name}. Error: {e}", 500
+
+    results = []
+
+    for i, ip in enumerate(pod_ips):
+        url = f"http://{ip}:{port}{endpoint}"
+        print(url)
+        
+        try:
+            response = requests.post(url, json=data)
+            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            results.append(f"Response from {ip}: {response.status_code}")
+        except requests.RequestException as e:
+            results.append(f"Failed to reach {ip}: {e}")
+            continue
+        
+        # After restarting the first sidecar container, check its health
+        if i == 0:
+            health_url = f"http://{ip}:{port}/health"
+            for attempt in range(3):  # Try 3 times
+                time.sleep(5)  # Wait for 5 seconds
+                try:
+                    health_response = requests.get(health_url)
+                    if health_response.status_code == 200:
+                        break
+                except requests.RequestException as e:
+                    print(f"Attempt {attempt + 1} - Failed to reach {health_url}. Error: {e}")
+            else:
+                return f"First sidecar container did not become healthy. Aborting restart.", 500
+
+    return results
+
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    service_name = "redismonitor-headless.cp-1049543.svc.cluster.local"
+    port = 8080
+    endpoint = "/reached"
+    data = request.get_json()
+    
+    results = broadcast_to_pods(service_name, port, endpoint, data)
+    
+    if isinstance(results, tuple) and results[1] == 500:
+        return jsonify(message=results[0]), 500
+    
+    return jsonify(message="Broadcast complete. Results: " + ", ".join(results)), 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
