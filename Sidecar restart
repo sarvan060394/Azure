@@ -711,4 +711,52 @@ def broadcast():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+---------------------------------------//////////////////=====================
+
+def broadcast_to_pods(sidecar_url, port):
+    pod_ips = get_pod_ips(sidecar_url)
+    endpoint = "/restart"
+    results = []
+
+    for i, ip in enumerate(pod_ips):
+        print(f"Starting iteration {i} for IP: {ip}")
+        url = f"http://{ip}:{port}{endpoint}"
+        print(f"URL: {url}")
+
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            results.append(f"Response from {ip}: {response.status_code}")
+        except requests.RequestException as e:
+            print(f"Failed to reach {ip}. Error: {e}")
+            results.append(f"Failed to reach {ip}. Error: {e}")
+            continue
+
+        # After restarting the first sidecar container, check its health
+        if i == 0:
+            health_url = f"http://{ip}:{port}/health"
+            print(f"Checking health at {health_url}")
+            health_check_passed = False
+            for attempt in range(5):
+                time.sleep(5)
+                try:
+                    health_response = requests.get(health_url)
+                    if health_response.status_code == 200:
+                        health_check_passed = True
+                        print(f"Health check passed on attempt {attempt + 1}")
+                        break
+                    else:
+                        print(f"Health check failed with status code: {health_response.status_code}")
+                except requests.RequestException as e:
+                    print(f"Attempt {attempt + 1} Failed to reach {health_url}. Error: {e}")
+
+            if not health_check_passed:
+                print("First sidecar container did not become healthy. Aborting restart.")
+                return "First sidecar container did not become healthy. Aborting restart.", 500
+
+        print(f"Finished iteration {i} for IP: {ip}")
+        print(f"End of iteration {i}")  # Added debug statement
+
+    print("Loop finished")  # Added debug statement
+    return results
 
