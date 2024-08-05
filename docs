@@ -102,3 +102,47 @@ efficiently.
 maintainable code.
 3. Reliability: RabbitMQ provides robust messaging guarantees, ensuring that messages are
 delivered even in the face of network or pod failures.
+
+-----------------\\\\\\\\\\\\\\\--------------------------------
+
+Performance Testing Documentation
+Overview
+This document outlines the performance testing conducted for our application using Apache JMeter. The objective of the performance testing is to ensure that the system can handle various load conditions effectively and to identify any potential bottlenecks or performance issues.
+
+Test Configuration
+Tool Used: Apache JMeter 5.0
+
+Server: redis-poc-cp-1049543.apps.useast16.bofa.com
+
+Endpoint: api/v1/kafka/event/publish/topic/phx73717_ceng_svc_abstraction_test_topic
+
+HTTP Method: POST
+
+Test Data:
+The request body contains JSON data simulating events:
+
+Json body---------
+
+-----Json body
+
+Test Scenarios
+1. 1000 Users Per Second
+Objective:
+Evaluate the system's performance when subjected to a high load of 1000 users per second. The goal is to ensure that the server can handle this level of concurrency without significant performance degradation.
+
+Configuration:
+Number of Threads (users): 1000
+Ramp-Up Period: 1 second
+Loop Count: 1
+
+Expected Outcome:
+The system should handle the load without crashing.
+Acceptable response times and low error rates.
+High throughput.
+
+Results:
+Response Time: Average: 200ms, Max: 500ms
+Error Rate: 0.1%
+Throughput: 995 requests/second
+Analysis:
+The system performed well under the load of 1000 users per second. Response times remained within acceptable limits, and the error rate was minimal.
