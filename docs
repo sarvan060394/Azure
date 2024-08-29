@@ -284,4 +284,53 @@ pipeline {
     }
 }
 
+₹₹₹₹₹₹₹₹₹₹₹₹
+pipeline {
+    agent any
+    environment {
+        TRACKER_STATE_FILE = 'tracker_state.pkl'  // File to store the tracker state
+    }
+    stages {
+        stage('Start Tracker') {
+            steps {
+                script {
+                    sh '''
+                    # Start the tracker and serialize it to a file
+                    python3 -c "
+import pickle
+from your_module import offlineEmissionTracker  # Import your tracker module
+
+# Initialize and start the tracker
+tracker = offlineEmissionTracker(country_iso_code='CAN')
+tracker.start()
+
+# Serialize tracker state
+with open('${TRACKER_STATE_FILE}', 'wb') as f:
+    pickle.dump(tracker, f)
+"
+                    '''
+                }
+            }
+        }
+        stage('Stop Tracker') {
+            steps {
+                script {
+                    sh '''
+                    # Deserialize the tracker object and stop it
+                    python3 -c "
+import pickle
+
+# Deserialize tracker state
+with open('${TRACKER_STATE_FILE}', 'rb') as f:
+    tracker = pickle.load(f)
+
+# Stop the tracker
+tracker.stop()
+"
+                    '''
+                }
+            }
+        }
+    }
+}
 
