@@ -235,3 +235,53 @@ tracker.stop()
         }
     }
 }
+pipeline {
+    agent any
+    environment {
+        PID_FILE = 'process.pid'  // Define a file to store the PID
+    }
+    stages {
+        stage('Start Process') {
+            steps {
+                script {
+                    sh '''
+                    # Start the process in the background (example: a sleep command)
+                    sleep 300 &
+                    
+                    # Save the PID of the process
+                    echo $! > ${PID_FILE}
+                    
+                    # Verify the process is running
+                    echo "Started process with PID: $(cat ${PID_FILE})"
+                    '''
+                }
+            }
+        }
+        stage('Stop Process') {
+            steps {
+                script {
+                    sh '''
+                    # Check if the PID file exists and read the PID
+                    if [ -f ${PID_FILE} ]; then
+                        PID=$(cat ${PID_FILE})
+                        
+                        # Stop the process
+                        kill $PID
+                        
+                        # Optionally verify if the process was terminated
+                        if ps -p $PID > /dev/null; then
+                            echo "Process $PID is still running"
+                        else
+                            echo "Process $PID has been terminated"
+                        fi
+                    else
+                        echo "PID file not found!"
+                    fi
+                    '''
+                }
+            }
+        }
+    }
+}
+
+
