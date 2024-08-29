@@ -186,4 +186,52 @@ pipeline {
     }
 }
 
+pipeline {
+    agent any
 
+    stages {
+        stage('Carbon Tracker started') {
+            steps {
+                // Step 1: Start the tracker and serialize it to a file
+                script {
+                    sh """
+                        python3 -c "
+import os
+import json
+from codecarbon import OfflineEmissionsTracker
+import pickle
+
+tracker = OfflineEmissionsTracker(country_iso_code='CAN')
+tracker.start()
+# Serialize the tracker object to a file
+with open('/tmp/tracker.pkl', 'wb') as f:
+    pickle.dump(tracker, f)
+"
+                    """
+                }
+
+                // Step 2: Print xyz in Groovy
+                script {
+                    echo "xyz"
+                }
+
+                // Step 3: Deserialize the tracker and stop it
+                script {
+                    sh """
+                        python3 -c "
+import json
+from codecarbon import OfflineEmissionsTracker
+import pickle
+
+# Deserialize the tracker object from the file
+with open('/tmp/tracker.pkl', 'rb') as f:
+    tracker = pickle.load(f)
+
+tracker.stop()
+"
+                    """
+                }
+            }
+        }
+    }
+}
