@@ -146,3 +146,44 @@ Error Rate: 0.1%
 Throughput: 995 requests/second
 Analysis:
 The system performed well under the load of 1000 users per second. Response times remained within acceptable limits, and the error rate was minimal.
+pipeline {
+    agent any
+
+    stages {
+        stage('Use shared library') {
+            steps {
+                // Step 1: Start a shell session and set the `tracker` variable
+                script {
+                    def tracker = sh(script: '''#!/bin/bash
+                    # Store the tracker variable in the shell
+                    tracker=test
+
+                    # Execute a Python command to use this variable
+                    python3 -c "import os; print('Tracker from Python:', os.environ['tracker'])"
+
+                    # Print the tracker variable from shell
+                    echo "Tracker from shell: $tracker"
+                    
+                    # Export tracker variable to environment for future use
+                    echo $tracker
+                    ''', returnStdout: true).trim()
+                }
+
+                // Step 2: Print xyz in Groovy
+                script {
+                    echo "xyz"
+                }
+
+                // Step 3: Return to the shell session and print the `tracker` variable
+                script {
+                    sh '''
+                    # Use the previously stored tracker variable
+                    echo "Final tracker: $tracker"
+                    '''
+                }
+            }
+        }
+    }
+}
+
+
