@@ -333,4 +333,169 @@ tracker.stop()
         }
     }
 }
+???????
 
+
+### Confluence Page: Performance Test Results for Kubernetes Kafka Proxy Service on OpenShift
+
+---
+
+**Page Title:** Performance Test Results for Kubernetes Kafka Proxy Service on OpenShift
+
+**Author:** [Your Name]
+
+**Date:** [Date of Testing]
+
+---
+
+### Overview
+
+This document captures the performance test results for the Kafka Proxy Service deployed on OpenShift with varying replica configurations and resource limits. The objective is to analyze the performance impact of scaling the service from 1 replica pod to 3 replica pods under different resource configurations and a defined traffic load.
+
+---
+
+### Test Environment
+
+- **Deployment Platform:** OpenShift
+- **Service:** Kubernetes Kafka Proxy
+- **Test Scenarios:**
+  - **Scenario 1:** 1 Replica Pod
+  - **Scenario 2:** 3 Replica Pods
+- **Pod Resource Configurations:**
+  - **Configuration A:** Request 2Gi, Limit 4Gi
+  - **Configuration B:** Request 2Gi, Limit 1Gi
+- **Traffic Rate:** 2400 requests over 10 minutes (~4 requests per second)
+- **Message Rate to Kafka:** [Specify if different]
+- **Kafka Cluster:** [Details on the Kafka setup if applicable]
+
+---
+
+### Test Objectives
+
+1. **Evaluate the system's ability to handle a sustained traffic load of 2400 requests in 10 minutes with 1 and 3 replica pods under different resource configurations.**
+2. **Assess the impact of different resource configurations on key performance metrics, including CPU, memory usage, message throughput, response time, and success/failure rates.**
+3. **Determine the most efficient configuration for optimal performance and resource utilization.**
+
+---
+
+### Test Setup
+
+**1. Scenario 1: 1 Replica Pod**
+
+   - **Replica Configuration:** 1 Pod
+   - **Pod Resource Configurations:**
+     - **Configuration A:** Request 2Gi, Limit 4Gi
+     - **Configuration B:** Request 2Gi, Limit 1Gi
+   - **Traffic Simulation:** 2400 requests in 10 minutes
+
+**2. Scenario 2: 3 Replica Pods**
+
+   - **Replica Configuration:** 3 Pods
+   - **Pod Resource Configurations:**
+     - **Configuration A:** Request 2Gi, Limit 4Gi
+     - **Configuration B:** Request 2Gi, Limit 1Gi
+   - **Traffic Simulation:** 2400 requests in 10 minutes
+
+**Tooling:**
+
+   - **Performance Testing Tool:** [Specify Tool, e.g., JMeter, Locust]
+   - **Monitoring Tools:** [Specify Tools, e.g., Prometheus, Grafana]
+   - **Data Collection:** Metrics collected via [Specify Tool or Method]
+
+---
+
+### Performance Metrics
+
+1. **CPU Utilization:** Average and peak CPU usage during the test.
+2. **Memory Usage:** Average and peak memory usage during the test.
+3. **Response Time:**
+   - **Average Response Time:** Mean response time for all requests.
+   - **95th Percentile Response Time:** Response time below which 95% of requests fall.
+4. **Throughput:** Number of successful Kafka messages per second.
+5. **Error Rate:** Number of failed requests or messages.
+6. **Pod Scaling Impact:** Comparison between 1 and 3 replicas in handling the load.
+7. **Resource Configuration Impact:** Comparison between different resource configurations (2Gi/4Gi vs. 2Gi/1Gi) on system performance.
+
+---
+
+### Test Results
+
+#### Scenario 1: 1 Replica Pod
+
+- **Configuration A (2Gi/4Gi):**
+  - **CPU Utilization:** [Detail the average and peak values]
+  - **Memory Usage:** [Detail the average and peak values]
+  - **Response Time:**
+    - **Average:** [Value]
+    - **95th Percentile:** [Value]
+  - **Throughput:** [Value]
+  - **Error Rate:** [Value]
+  - **Observations:** [List any observations, such as resource saturation, high latency, etc.]
+
+- **Configuration B (2Gi/1Gi):**
+  - **CPU Utilization:** [Detail the average and peak values]
+  - **Memory Usage:** [Detail the average and peak values]
+  - **Response Time:**
+    - **Average:** [Value]
+    - **95th Percentile:** [Value]
+  - **Throughput:** [Value]
+  - **Error Rate:** [Value]
+  - **Observations:** [List any observations, such as resource saturation, high latency, etc.]
+
+#### Scenario 2: 3 Replica Pods
+
+- **Configuration A (2Gi/4Gi):**
+  - **CPU Utilization:** [Detail the average and peak values]
+  - **Memory Usage:** [Detail the average and peak values]
+  - **Response Time:**
+    - **Average:** [Value]
+    - **95th Percentile:** [Value]
+  - **Throughput:** [Value]
+  - **Error Rate:** [Value]
+  - **Observations:** [List any observations, such as improved performance, reduced latency, etc.]
+
+- **Configuration B (2Gi/1Gi):**
+  - **CPU Utilization:** [Detail the average and peak values]
+  - **Memory Usage:** [Detail the average and peak values]
+  - **Response Time:**
+    - **Average:** [Value]
+    - **95th Percentile:** [Value]
+  - **Throughput:** [Value]
+  - **Error Rate:** [Value]
+  - **Observations:** [List any observations, such as improved performance, reduced latency, etc.]
+
+---
+
+### Analysis
+
+- **Performance Comparison:** Analyze the differences in performance metrics between the two scenarios and resource configurations. Discuss the impact of scaling from 1 to 3 pods and the effect of resource limits on handling the traffic load.
+- **Bottlenecks:** Identify any bottlenecks observed during the tests and suggest possible optimizations.
+- **Recommendations:** Provide recommendations for optimal scaling strategies, resource configuration tuning, or any other improvements based on the test results.
+
+---
+
+### Conclusion
+
+Summarize the key findings from the performance tests, emphasizing the relationship between pod scaling, resource configuration, and system performance. Provide a final recommendation on the optimal configuration for handling the specified traffic load.
+
+---
+
+**Attachments:**
+
+- [Links to detailed logs, charts, and raw data files]
+
+---
+
+**Reviewers:**
+
+- [Reviewer Name 1]
+- [Reviewer Name 2]
+
+**Approvals:**
+
+- [Approval Name 1]
+- [Approval Name 2]
+
+---
+
+This page provides a comprehensive view of the performance test results and serves as a reference for future optimizations and scaling strategies.
