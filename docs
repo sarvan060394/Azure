@@ -499,3 +499,99 @@ Summarize the key findings from the performance tests, emphasizing the relations
 ---
 
 This page provides a comprehensive view of the performance test results and serves as a reference for future optimizations and scaling strategies.
+
+
+/////////
+### Confluence Page: Performance Test Results for Kubernetes Kafka Proxy Service on OpenShift
+
+---
+
+**Page Title:** Performance Test Results for Kubernetes Kafka Proxy Service on OpenShift
+
+**Author:** [Your Name]
+
+**Date:** [Date of Testing]
+
+---
+
+### Overview
+
+This document captures the performance test results for the Kafka Proxy Service deployed on OpenShift under various load conditions. Multiple scenarios have been tested to assess the service's performance across different traffic rates, time durations, and replica configurations.
+
+---
+
+### Test Environment
+
+- **Deployment Platform:** OpenShift
+- **Service:** Kubernetes Kafka Proxy
+- **Traffic Rates:**
+  - 2400 requests over 10 minutes (~4 requests per second)
+  - 4800 requests over 10 minutes (~8 requests per second)
+  - 4800 requests over 30 minutes (~2.67 requests per second)
+- **Replica Configurations:**
+  - 1 Replica Pod
+  - 3 Replica Pods
+- **Resource Configurations:**
+  - Request 2Gi, Limit 4Gi
+  - Request 2Gi, Limit 1Gi
+- **Kafka Cluster:** [Details on the Kafka setup if applicable]
+
+---
+
+### Use Cases and Test Scenarios
+
+**1. Scenario 1: Expected Production Load**
+   - **Traffic Rate:** 2400 requests in 10 minutes
+   - **Replica Configuration:** 1 Pod
+   - **Resource Configuration:** Request 2Gi, Limit 4Gi
+   - **Description:** Simulates the expected production load with 1 replica pod configured to handle the average traffic rate efficiently.
+
+**2. Scenario 2: Doubling the Production Requirements**
+   - **Traffic Rate:** 2400 requests in 10 minutes
+   - **Replica Configuration:** 3 Pods
+   - **Resource Configuration:** Request 2Gi, Limit 4Gi
+   - **Description:** Tests the system's scalability when the load is doubled, using 3 replica pods to manage the increased traffic.
+
+**3. Scenario 3: Resource-Constrained Environment**
+   - **Traffic Rate:** 2400 requests in 10 minutes
+   - **Replica Configuration:** 1 Pod
+   - **Resource Configuration:** Request 2Gi, Limit 1Gi
+   - **Description:** Evaluates performance under resource constraints, with the pod limited to 1Gi of memory.
+
+**4. Scenario 4: Stress Testing with Limited Resources**
+   - **Traffic Rate:** 2400 requests in 10 minutes
+   - **Replica Configuration:** 3 Pods
+   - **Resource Configuration:** Request 2Gi, Limit 1Gi
+   - **Description:** Stress tests the system with increased replicas and constrained resources.
+
+**5. Scenario 5: High Load Over Short Duration**
+   - **Traffic Rate:** 4800 requests in 10 minutes
+   - **Replica Configuration:** 1 Pod
+   - **Resource Configuration:** Request 2Gi, Limit 4Gi
+   - **Description:** Tests how the system handles a high traffic load over a short duration with 1 replica pod.
+
+**6. Scenario 6: Scaling with High Load**
+   - **Traffic Rate:** 4800 requests in 10 minutes
+   - **Replica Configuration:** 3 Pods
+   - **Resource Configuration:** Request 2Gi, Limit 4Gi
+   - **Description:** Evaluates system performance when scaled up to 3 pods under the same high load.
+
+**7. Scenario 7: Prolonged High Load with Resource Constraints**
+   - **Traffic Rate:** 4800 requests in 30 minutes
+   - **Replica Configuration:** 1 Pod
+   - **Resource Configuration:** Request 2Gi, Limit 1Gi
+   - **Description:** Tests the system's ability to handle a prolonged load with limited resources.
+
+**8. Scenario 8: Prolonged High Load with Scaling**
+   - **Traffic Rate:** 4800 requests in 30 minutes
+   - **Replica Configuration:** 3 Pods
+   - **Resource Configuration:** Request 2Gi, Limit 4Gi
+   - **Description:** Assesses performance when the load is sustained over a longer period with multiple replicas.
+
+---
+
+### Test Results Summary
+
+The results for each test scenario are summarized in the table below, capturing key performance metrics such as CPU utilization, memory usage, response time, throughput, and error rate.
+
+| **Scenario**                                             | **Traffic Rate**             | **Replica Configuration** | **
