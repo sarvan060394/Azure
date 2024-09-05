@@ -760,3 +760,12 @@ def broadcast_to_pods(sidecar_url, port):
     print("Loop finished")  # Added debug statement
     return results
 
+
+
+
+spec:
+  containers:
+    - name: <container-name>
+      env:
+        - name: JAVA_OPTS
+          value: "-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp"
