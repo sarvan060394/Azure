@@ -810,3 +810,22 @@ Based on the performance testing results that you've documented in Confluence, y
      - For 3 Pods: Request 750Mi, Limit 1.5Gi per pod (scalability ensures distributed memory consumption).
 
 These recommendations should help optimize resource utilization while maintaining system performance under high traffic loads.
+
+-------------
+Here’s how you can revise the recommendations:
+
+### Recommendations:
+1. **CPU Recommendations:**
+   - The CPU configurations are performing well within the allocated limits under all traffic scenarios. The observed usage consistently remains below the defined limits, indicating that the current CPU requests and limits are adequate.
+   - **Conclusion:** No changes are required for CPU configurations.
+
+2. **Memory Recommendations:**
+   - Memory usage, while staying within limits, suggests potential over-allocation, especially since it doesn't approach the 4Gi limit, even under higher loads.
+   - **Suggested Memory Configurations:**
+     - For 1 Pod: Request 1Gi, Limit 2Gi (peak memory usage was below 600Mi).
+     - For 3 Pods: Request 750Mi, Limit 1.5Gi per pod (ensuring good distribution across pods).
+
+These memory adjustments should optimize resource utilization without compromising performance.
+
+
+
