@@ -769,3 +769,44 @@ spec:
       env:
         - name: JAVA_OPTS
           value: "-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp"
+
+
+
+
+
+////////--------------/////
+
+Based on the performance testing results that you've documented in Confluence, you can capture observations and recommendations for pod resources (memory and CPU) using the following insights:
+
+### Observations:
+1. **Scenario 1 (1 Pod) - 2400 & 4800 requests in 10 minutes:**
+   - **CPU Usage:** 
+     - At 2400 requests, the maximum CPU usage observed was 151m, with a throughput of 4 messages/second.
+     - At 4800 requests, the CPU usage increased to 273m, with throughput doubling to 8 messages/second.
+     - CPU usage still remained well below the 500m limit, indicating headroom for higher traffic.
+   - **Memory Usage:** 
+     - Memory consumption rose from 369Mi at 2400 requests to 565Mi at 4800 requests. 
+     - Both memory usage patterns remain well under the 4Gi limit, indicating there is sufficient memory allocation even under higher traffic.
+
+2. **Scenario 2 (3 Pods) - 2400 & 4800 requests in 10 minutes:**
+   - **CPU Usage:** 
+     - At 2400 requests, the CPU usage varied across the three pods (Pod1: 79m, Pod2: 66m, Pod3: 110m), averaging much lower than the single pod scenario.
+     - At 4800 requests, the highest CPU usage was 153m (Pod1) and the average across the pods still remained below 500m per pod, maintaining good load distribution.
+   - **Memory Usage:** 
+     - Similar to CPU, memory consumption also varied across the pods (Pod1: 350Mi, Pod2: 310Mi, Pod3: 335Mi for 2400 requests).
+     - At 4800 requests, memory usage increased slightly but still stayed well within the limits, ensuring good scalability across multiple replicas.
+
+### Recommendations:
+1. **CPU Recommendations:**
+   - The observed CPU usage in both scenarios was consistently lower than the 500m CPU limit, which suggests that the limit can be further optimized. You might consider lowering the CPU request and limit for both single and multiple pod configurations.
+   - **Suggested CPU Configurations:**
+     - For 1 Pod: Request 150m, Limit 300m (since even at peak load, CPU usage remained well under 300m).
+     - For 3 Pods: Request 100m, Limit 200m per pod (load distribution allows for lower limits).
+
+2. **Memory Recommendations:**
+   - Memory usage remained well below the 4Gi limit, even under the highest load conditions. This suggests potential over-allocation of memory resources.
+   - **Suggested Memory Configurations:**
+     - For 1 Pod: Request 1Gi, Limit 2Gi (since peak usage was below 600Mi, a 2Gi limit should suffice).
+     - For 3 Pods: Request 750Mi, Limit 1.5Gi per pod (scalability ensures distributed memory consumption).
+
+These recommendations should help optimize resource utilization while maintaining system performance under high traffic loads.
