@@ -594,4 +594,41 @@ This document captures the performance test results for the Kafka Proxy Service 
 
 The results for each test scenario are summarized in the table below, capturing key performance metrics such as CPU utilization, memory usage, response time, throughput, and error rate.
 
-| **Scenario**                                             | **Traffic Rate**             | **Replica Configuration** | **
+| **Scenario**      
+
+
+
+| **Traffic Rate**             | **Replica Configuration** | **
+
+
+
+
+To document this in an elaborated Jira story comment, you could structure it as follows:
+
+---
+
+**Heap Dump Generation for Kubernetes Proxy Application Deployed in OpenShift**
+
+As part of our ongoing analysis for the Kubernetes proxy application deployed in OpenShift, we have been investigating two different scenarios for generating heap dumps. These scenarios are critical for diagnosing memory issues and improving the performance and stability of our application. Below is a detailed breakdown of the current status and limitations of both approaches:
+
+1. **Heap Dump Generation During Pod Termination:**
+   - We have successfully configured the heap dump generation in scenarios where a pod is manually terminated (either by a user or through Kubernetes' automatic scaling/restarting mechanisms).
+   - In this case, the heap dump is generated just before the pod is terminated, which helps us capture the state of the application during pod lifecycle events. This method provides valuable insights into the memory consumption and the state of objects in the heap at the time of termination.
+   - This method is fully implemented and working as expected in our OpenShift environment.
+
+2. **Heap Dump Generation on Out of Memory (OOM) Events:**
+   - The second scenario focuses on generating a heap dump when the application encounters an Out of Memory (OOM) event. Such events are crucial for diagnosing memory leaks or excessive memory usage that lead to the application crashing.
+   - However, at present, we are facing limitations in achieving this. Specifically, the base image used for the Kubernetes proxy app does not support automatic heap dump generation upon OOM. 
+   - The current OpenShift and organizational infrastructure lacks the necessary features to configure this functionality, primarily due to limitations in the base image's capabilities, which prevent us from automatically capturing heap dumps during OOM conditions.
+   - Implementing this would likely require a change in the base image to one that supports this functionality, or a modification in our deployment pipeline to accommodate this.
+
+**Next Steps:**
+- Investigate potential options for base image customization or explore alternative images that support heap dump generation on OOM.
+- Engage with the DevOps and platform teams to evaluate whether adjustments can be made to our Kubernetes configuration or OpenShift environment to enable heap dump creation during OOM events.
+- Document any findings and assess the feasibility of implementing this feature in future releases.
+
+By addressing these two scenarios, we aim to enhance our application's resilience and gain better diagnostic capabilities, especially in high-memory-use situations.
+
+--- 
+
+This comment gives a clear overview of the situation, highlights the challenges, and outlines potential next steps.
