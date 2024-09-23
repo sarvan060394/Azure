@@ -632,3 +632,32 @@ By addressing these two scenarios, we aim to enhance our application's resilienc
 --- 
 
 This comment gives a clear overview of the situation, highlights the challenges, and outlines potential next steps.
+
+
+
+
+-------////-----
+
+Here’s a possible **Acceptance Criteria** in the **Given-When-Then** format for your story:
+
+---
+
+**Story:** Persist Prometheus metrics across pod restarts by enabling the metrics file in a Persistent Volume (PV).
+
+**Acceptance Criteria:**
+
+1. **Given** the Java application is deployed on OpenShift and uses the `meterRegistry` library for Prometheus metrics,  
+   **When** a pod is restarted or deleted,  
+   **Then** the metrics file should be persisted in a Persistent Volume (PV) and all previous metrics (like hit count, response time, etc.) should continue without resetting.
+
+2. **Given** the Persistent Volume (PV) is configured and mounted correctly in the pod,  
+   **When** metrics are written to the `meterRegistry`,  
+   **Then** they should be stored in the PV to ensure data is available after pod restarts.
+
+3. **Given** the `/actuator/Prometheus` endpoint is being accessed after a pod restart,  
+   **When** the metrics data is retrieved,  
+   **Then** it should reflect the accumulated metrics from before the restart, without starting from scratch. 
+
+---
+
+This covers the key requirements for persisting the Prometheus metrics.
