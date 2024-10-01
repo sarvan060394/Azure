@@ -661,3 +661,44 @@ Here’s a possible **Acceptance Criteria** in the **Given-When-Then** format fo
 ---
 
 This covers the key requirements for persisting the Prometheus metrics.
+
+
+
+
+If Grafana is not available in your organization, you can consider the following alternatives for visualizing Prometheus metrics on a single page:
+
+### 1. **Prometheus Expression Browser**
+   - **Description**: Prometheus itself has a basic UI called the **Expression Browser**, where you can manually run **PromQL** queries and visualize the results.
+   - **How to Use**: 
+     - Navigate to `http://<prometheus-server>/graph` in your browser.
+     - Enter your PromQL queries and view graphs. You can run multiple queries side by side, though it's not as feature-rich as a full dashboard.
+   - **Limitations**: Limited visualization capabilities and cannot combine metrics into a single dashboard.
+
+### 2. **Thanos Querier UI** (if Thanos is available)
+   - **Description**: Thanos provides a **Querier UI** that integrates with Prometheus and extends its capabilities.
+   - **How to Use**: 
+     - If Thanos is set up in your environment, access the **Querier** component, which allows you to aggregate data from multiple Prometheus instances and view the metrics on a single UI.
+   - **Limitations**: Requires Thanos to be deployed, and still offers fewer visualization features compared to Grafana.
+
+### 3. **Custom Web Application**
+   - **Description**: You can build a simple web app using a framework like **Flask** (Python) or **Express** (Node.js) that pulls metrics from the Prometheus API and displays them on a single page.
+   - **How to Use**: 
+     - Query Prometheus' API using the `/api/v1/query` endpoint.
+     - Fetch multiple metrics and render them in a table, chart, or other visual formats in your custom web application.
+   - **Limitations**: Requires development effort but gives you full control over how the metrics are presented.
+
+### 4. **Prometheus Console Templates**
+   - **Description**: Prometheus supports **console templates**, where you can create custom HTML pages that visualize metrics using simple graphs or tables.
+   - **How to Use**:
+     - Create a **.libsonnet** or **.html** file under the `consoles/` directory of Prometheus.
+     - Define the queries and the layout in the template, then view it by accessing `http://<prometheus-server>/consoles/your-template`.
+   - **Limitations**: Basic visualization capabilities, but can be a useful option for aggregating metrics.
+
+### 5. **Pushgateway for Aggregated Metrics**
+   - **Description**: **Prometheus Pushgateway** can be used to collect and aggregate metrics from short-lived jobs or batch processes.
+   - **How to Use**:
+     - Set up Pushgateway and push metrics from your Prometheus clients.
+     - These metrics can be aggregated in Prometheus and visualized through the Expression Browser or other custom setups.
+   - **Limitations**: Mainly suited for batch jobs and needs some setup for continuous processes.
+
+These options provide flexibility based on your needs, allowing you to consolidate your Prometheus metrics in one place for better monitoring.
