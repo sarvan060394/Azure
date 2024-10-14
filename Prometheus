@@ -101,3 +101,96 @@ When the pod restarts, the script checks if aggregated_metrics.txt exists and co
 
 This script ensures that the metrics data from the /actuator/prometheus endpoint is read periodically, aggregated, and persisted using a PV, and it handles pod restarts by aggregating with the previously stored values.
 
+/////
+
+
+#!/bin/bash
+
+# Define variables
+METRICS_ENDPOINT="http://localhost:8080/actuator/prometheus"
+METRICS_FILE="/mnt/metrics/persisted_metrics.txt"
+AGGREGATED_FILE="/mnt/metrics/aggregated_metrics.txt"
+TEMP_FILE="/mnt/metrics/temp_metrics.txt"
+PREVIOUS_METRICS_FILE="/mnt/metrics/previous_metrics.txt"
+
+# Check if the persisted metrics and aggregated files exist, if not, create them
+if [ ! -f "$METRICS_FILE" ]; then
+  touch "$METRICS_FILE"
+fi
+
+if [ ! -f "$AGGREGATED_FILE" ]; then
+  touch "$AGGREGATED_FILE"
+fi
+
+if [ ! -f "$PREVIOUS_METRICS_FILE" ]; then
+  touch "$PREVIOUS_METRICS_FILE"
+fi
+
+# Function to read metrics from the Prometheus endpoint
+function read_metrics {
+  curl -s "$METRICS_ENDPOINT" > "$TEMP_FILE"
+}
+
+# Function to calculate the difference between current and previous metrics
+function calculate_difference {
+  while read -r line; do
+    metric_name=$(echo "$line" | awk '{print $1}')
+    metric_value=$(echo "$line" | awk '{print $2}')
+    
+    # Get previous metric value
+    previous_value=$(grep "^$metric_name " "$PREVIOUS_METRICS_FILE" | awk '{print $2}')
+    
+    # Calculate the difference
+    if [ -n "$previous_value" ]; then
+      # Calculate the difference, handling cases where the value might have reset
+      if (( $(echo "$metric_value >= $previous_value" | bc -l) )); then
+        difference=$(echo "$metric_value - $previous_value" | bc)
+      else
+        # If the current value is less than the previous, it likely reset, so take the current value as the difference
+        difference=$metric_value
+      fi
+    else
+      # If no previous value exists, treat the entire value as the difference (initial read)
+      difference=$metric_value
+    fi
+    
+    # Update the previous metrics file with the current value
+    sed -i "/^$metric_name /d" "$PREVIOUS_METRICS_FILE"
+    echo "$metric_name $metric_value" >> "$PREVIOUS_METRICS_FILE"
+    
+    # Aggregate the difference into the existing aggregated file
+    existing_aggregated_value=$(grep "^$metric_name " "$AGGREGATED_FILE" | awk '{print $2}')
+    
+    # If there is an existing aggregated value, add the difference to it
+    if [ -n "$existing_aggregated_value" ]; then
+      new_aggregated_value=$(echo "$existing_aggregated_value + $difference" | bc)
+    else
+      new_aggregated_value=$difference
+    fi
+
+    # Update the aggregated file with the new aggregated value
+    sed -i "/^$metric_name /d" "$AGGREGATED_FILE"
+    echo "$metric_name $new_aggregated_value" >> "$AGGREGATED_FILE"
+  done < "$TEMP_FILE"
+}
+
+# Function to aggregate metrics
+function aggregate_metrics {
+  # Read current metrics into a temporary file
+  read_metrics
+  
+  # Calculate the difference and update the aggregated values
+  calculate_difference
+  
+  # Store the latest metrics as a backup in the metrics file for persistence
+  cp "$PREVIOUS_METRICS_FILE" "$METRICS_FILE"
+}
+
+# Schedule the script to run every 5 minutes (using a while loop and sleep)
+while true; do
+  aggregate_metrics
+  
+  # Wait for 5 minutes before running again
+  sleep 300
+done
+
