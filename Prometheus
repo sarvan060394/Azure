@@ -1,0 +1,103 @@
+Prometheus :
+
+To achieve this, you can use a shell script that periodically reads the metrics from your Java app's /actuators/prometheus endpoint and stores the data in a persistent volume (PV). If the pod restarts and the data starts from 0, the script should read the existing values from the PV and aggregate the new data with the previous data. Here's a suggested approach:
+
+1. Set Up Persistent Volume (PV) and Persistent Volume Claim (PVC)
+
+Define a PV and a PVC to store the metrics data. Make sure that the PVC is bound to your Java app deployment to persist the metrics.
+
+
+2. Shell Script to Handle Data Aggregation
+
+Create a script that will:
+
+Read metrics from the /actuator/prometheus endpoint.
+
+Store the metrics data in a file located in the PV.
+
+If the pod restarts, read the stored metrics from the file, aggregate the data, and update the stored values.
+
+
+
+Here’s an example of the shell script:
+
+#!/bin/bash
+
+# Define variables
+METRICS_ENDPOINT="http://localhost:8080/actuator/prometheus"
+METRICS_FILE="/mnt/metrics/persisted_metrics.txt"
+AGGREGATED_FILE="/mnt/metrics/aggregated_metrics.txt"
+TEMP_FILE="/mnt/metrics/temp_metrics.txt"
+
+# Check if persisted metrics file exists, if not, create it
+if [ ! -f "$METRICS_FILE" ]; then
+  touch "$METRICS_FILE"
+fi
+
+# Function to read metrics from the Prometheus endpoint
+function read_metrics {
+  curl -s "$METRICS_ENDPOINT" > "$TEMP_FILE"
+}
+
+# Function to aggregate metrics
+function aggregate_metrics {
+  # Read current metrics into a temporary file
+  read_metrics
+  
+  # If there is existing data, aggregate the values
+  if [ -f "$AGGREGATED_FILE" ]; then
+    # Loop through each line in the temporary file
+    while read -r line; do
+      # Extract metric name and value
+      metric_name=$(echo "$line" | awk '{print $1}')
+      metric_value=$(echo "$line" | awk '{print $2}')
+      
+      # Get previous value for the metric from the aggregated file
+      previous_value=$(grep "^$metric_name " "$AGGREGATED_FILE" | awk '{print $2}')
+      
+      # Calculate the new aggregated value
+      if [ -n "$previous_value" ]; then
+        new_value=$(echo "$previous_value + $metric_value" | bc)
+      else
+        new_value=$metric_value
+      fi
+      
+      # Update or add the aggregated value
+      sed -i "/^$metric_name /d" "$AGGREGATED_FILE"
+      echo "$metric_name $new_value" >> "$AGGREGATED_FILE"
+    done < "$TEMP_FILE"
+  else
+    # If no previous data, just copy the current metrics to the aggregated file
+    cp "$TEMP_FILE" "$AGGREGATED_FILE"
+  fi
+}
+
+# Schedule the script to run every 5 minutes (using a while loop and sleep)
+while true; do
+  aggregate_metrics
+  # Store the latest metrics as a backup in the metrics file
+  cp "$AGGREGATED_FILE" "$METRICS_FILE"
+  
+  # Wait for 5 minutes before running again
+  sleep 300
+done
+
+3. Deploy the Script with the Java App
+
+Package this script in a sidecar container, or include it as part of the Java app's container.
+
+Mount the PV to the path /mnt/metrics to ensure the metrics data persists across restarts.
+
+
+4. Automate the Script Execution
+
+Make the script executable using chmod +x script.sh and include it as a startup script in your container definition, or use an init container if you need to run this script before the main app starts.
+
+
+5. Handling Restarts
+
+When the pod restarts, the script checks if aggregated_metrics.txt exists and continues aggregation from the stored data, ensuring that the values are not reset.
+
+
+This script ensures that the metrics data from the /actuator/prometheus endpoint is read periodically, aggregated, and persisted using a PV, and it handles pod restarts by aggregating with the previously stored values.
+
