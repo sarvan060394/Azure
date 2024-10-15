@@ -889,3 +889,32 @@ Validation of the metrics persistence across multiple restart scenarios.
 Parallel discussions with the SRE and engineering teams to explore the viability of Prometheus-side persistence.
 
 Decision on the preferred solution based on testing results and feedback from the SRE team.
+
+
+!!!!!!!
+
+Based on the performance test results you provided, here’s a brief observation and conclusion for your email:
+
+
+---
+
+Observation:
+For sustained traffic of 4 events/second (7200 events over 10 minutes) and 8 events/second (14,400 events over 10 minutes):
+
+CPU Usage: Initial usage was low (Pod1: 6 mcores, Pod2: 68 mcores), with the maximum observed CPU remaining within limits (Pod1: 101 mcores, Pod2: 110 mcores for 4 TPS, and slightly higher for 8 TPS).
+
+Memory Usage: Memory usage was stable, with a maximum of around 378 Mi observed, staying comfortably below the limit of 3 Gi.
+
+Throughput: The system maintained throughput rates of 4 to 8 messages per second, confirming that it can handle sustained high loads.
+
+
+Conclusion:
+The current resource configuration (CPU request: 500 mcore, CPU limit: 1 core, Memory request: 2 Gi, Memory limit: 3 Gi) is sufficient to handle the expected load scenarios, with no significant issues observed in CPU or memory usage. We are good to proceed with this resource configuration.
+
+
+---
+
+Would this summary work for your email?
+
+
+
