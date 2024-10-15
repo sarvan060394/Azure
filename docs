@@ -702,3 +702,190 @@ If Grafana is not available in your organization, you can consider the following
    - **Limitations**: Mainly suited for batch jobs and needs some setup for continuous processes.
 
 These options provide flexibility based on your needs, allowing you to consolidate your Prometheus metrics in one place for better monitoring.
+
+
+------------------------
+
+Confluence Page Update: Persisting Prometheus Metrics for Java Application
+
+
+---
+
+Page Title: Persisting Prometheus Metrics for Java Application
+
+
+---
+
+Overview
+
+In modern application deployments, monitoring is a crucial aspect to ensure the health, performance, and reliability of applications. Java applications often leverage Prometheus MeterRegistry to expose detailed metrics about application performance. However, these metrics are typically stored in-memory by default, which means that once an application or its associated pod restarts, the metric data is lost. To overcome this limitation and ensure continuity in metric data, we are implementing a solution to persist metrics using a custom script.
+
+
+---
+
+Objective
+
+The primary objective of this initiative is:
+
+To persist Prometheus metrics that are exposed through the /actuator/prometheus endpoint, which are currently stored in-memory.
+
+To develop a custom script that runs at regular intervals, collects the required metrics, calculates their changes, and saves the aggregated data to a Persistent Volume (PV).
+
+This script will allow metrics to retain their values even after a pod restart, thus providing continuous insights into the application’s performance over time.
+
+
+
+---
+
+Why Are We Doing This?
+
+1. Current Challenge with In-Memory Metrics:
+
+Java applications that expose metrics using the Prometheus MeterRegistry store these metrics in-memory.
+
+When a pod restarts (e.g., due to a deployment update or failure), the in-memory metrics are reset, causing loss of valuable historical data.
+
+As a result, aggregated metrics such as request counts, JVM memory usage, and custom business metrics start from zero, which makes it difficult to get a continuous view of application performance.
+
+
+
+2. Need for Metric Persistence:
+
+Continuous Monitoring: Persistent storage of metrics ensures that data is not lost upon restarts, providing a continuous monitoring view.
+
+Accurate Reporting: It helps in maintaining accurate reports and dashboards over time, as the data is cumulative and accounts for previous values.
+
+Historical Analysis: With persisted metrics, historical data analysis becomes possible, enabling the team to observe trends over time, such as memory usage patterns, API response times, and error rates.
+
+
+
+3. Benefits for the Operations Team:
+
+The persistence mechanism simplifies the troubleshooting process, allowing operators to have a consistent baseline of metrics.
+
+It reduces the need for manual interventions to restart applications or rely on external monitoring solutions that may also face data sync challenges during restarts.
+
+
+
+
+
+---
+
+Theory Behind the Solution
+
+The solution involves the development of a script that can be triggered by the application itself at regular intervals. Here is how the approach works:
+
+1. Metrics Collection:
+
+The Java application exposes metrics via the /actuator/prometheus endpoint.
+
+The script is designed to fetch these metrics from the endpoint at predefined intervals (e.g., every 5 minutes).
+
+
+2. Selective Metrics Extraction:
+
+The script filters out only the relevant metrics that are critical for monitoring and are defined in a configuration file (e.g., memory usage, request counts, etc.).
+
+This ensures that only the required metrics are processed and stored, reducing storage overhead.
+
+
+3. Aggregation of Metrics:
+
+The script then compares the current metrics with previously stored values in the PV.
+
+It calculates the difference between the current and previous values to derive the incremental changes.
+
+If the application has restarted and the metric values have reset to zero, the script recognizes this and handles the difference calculation accordingly.
+
+
+4. Persistence to a Persistent Volume (PV):
+
+The script then writes the aggregated metrics to a text file in a Persistent Volume (PV).
+
+This PV is mounted to the application's pod, ensuring that even after restarts, the file containing metrics data remains intact.
+
+
+5. Continuous Update:
+
+The script runs at regular intervals, allowing it to continuously update and persist new metrics.
+
+This ensures that the application’s metrics are always up-to-date in the persistent storage, providing accurate data for external systems or dashboards to consume.
+
+
+
+---
+
+Parallel Evaluation: SRE and Engineering Team Investigation
+
+While we are developing this script-based approach to persist metrics, we are also collaborating with the SRE and engineering teams to explore potential solutions on the Prometheus side itself. Specifically, we are investigating:
+
+Whether Prometheus can natively persist metrics data in our bank’s infrastructure without relying solely on the application-side script.
+
+Evaluating Prometheus retention policies and configuration options that could allow us to store metric data in a more seamless and centralized manner.
+
+Potential impact on Prometheus performance and resource usage when enabling persistence directly in the monitoring stack, as opposed to application-side solutions.
+
+
+This parallel approach ensures that we explore all available options for metrics persistence, allowing us to adopt the most efficient and scalable solution for our environment. The goal is to find a solution that meets our requirements for data retention, accuracy, and operational simplicity.
+
+
+---
+
+Implementation Summary
+
+Tools Used:
+
+Prometheus MeterRegistry for exposing metrics.
+
+Shell script for reading, extracting, and persisting metrics.
+
+Persistent Volume (PV) for storing metrics data across pod restarts.
+
+
+Script Behavior:
+
+Reads metrics from /actuator/prometheus.
+
+Extracts specific metrics based on a configuration file.
+
+Aggregates changes and stores the result in a file within the PV.
+
+Handles application restarts by comparing new metrics with previously persisted values.
+
+
+Collaboration with SRE and Engineering:
+
+Evaluate options for native Prometheus persistence in our infrastructure.
+
+Assess configuration changes and their feasibility.
+
+
+
+
+---
+
+Expected Outcome
+
+By implementing this solution and evaluating alternative options with the SRE team, we aim to:
+
+Retain historical metrics data across pod restarts, leading to improved insights into application performance.
+
+Enhance reliability of the monitoring process by ensuring that metrics are not lost during redeployments.
+
+Enable the operations team to analyze trends over a longer duration without losing continuity in the data.
+
+Optimize resource usage and potentially simplify the architecture if a Prometheus-based solution proves viable.
+
+
+
+---
+
+Next Steps
+
+Development and testing of the script in the staging environment.
+
+Validation of the metrics persistence across multiple restart scenarios.
+
+Parallel discussions with the SRE and engineering teams to explore the viability of Prometheus-side persistence.
+
+Decision on the preferred solution based on testing results and feedback from the SRE team.
