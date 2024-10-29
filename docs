@@ -1166,7 +1166,41 @@ This way, Dapr helps you manage different components without making things too c
 ---
 
 This explanation provides a step-by-step view of how Dapr manages multiple components with a single sidecar, making it easier to understand and share with your team.
+............
 
+
+
+Comment:
+
+We’ve tried three ways to save Prometheus metrics data, but each has had issues:
+
+1. Using application settings to save metrics directly to the PV
+
+We tried configuring the app to write metrics to the PV, but it didn’t work as expected.
+
+
+
+2. Sending metrics to /var/logs for Splunk to collect
+
+We tried to save metrics in /var/logs so Splunk could collect it, but we don’t have permission to create files in /var/logs.
+
+
+
+3. Creating a script utility
+
+We’re working on a script to get metrics from /actuator/prometheus, save it to the PV, and add up the metrics even after a restart. We’re still improving this script.
+
+
+
+
+Next Steps:
+
+Keep working on the script to make sure it correctly saves and adds up metrics in the PV.
+
+Look into setting up Splunk to collect logs from a different path.
+
+
+Let me know if this is clear or needs any changes!
 
 
 
