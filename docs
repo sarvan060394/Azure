@@ -1187,3 +1187,197 @@ Sub-Tasks:
 
 Note: Ensure that the test namespace is configured correctly before beginning the tests.
 
+,,,,,,
+
+
+Here’s a detailed, step-by-step guide to building a container image using a custom S2I builder image that pulls code from two Bitbucket repositories (for Redis and Kafka code) and combines them in a single image.
+
+
+---
+
+Step 1: Create the Custom S2I Builder Image
+
+1. Prepare the Custom S2I assemble Script:
+
+Create a directory structure for your S2I scripts. The assemble script should clone both Redis and Kafka repositories.
+
+Example assemble script:
+
+#!/bin/bash
+set -e
+
+# Clone Redis repository
+git clone "$REDIS_REPO_URL" /tmp/redis
+
+# Clone Kafka repository
+git clone "$KAFKA_REPO_URL" /tmp/kafka
+
+# Move or copy files from both repos to the application directory
+cp -r /tmp/redis/* /opt/app-root/src/
+cp -r /tmp/kafka/* /opt/app-root/src/
+
+# Clean up
+rm -rf /tmp/redis /tmp/kafka
+
+# Run any additional build steps as needed
+
+
+
+2. Create a Dockerfile for the Custom S2I Image:
+
+Write a Dockerfile that sets up the custom S2I image using OpenJDK on RHEL 9 as the base image.
+
+# Start with the OpenJDK 17 RHEL 9 base image
+FROM registry.redhat.io/openjdk/openjdk-17-rhel9:latest
+
+# Copy the custom S2I scripts
+COPY ./s2i/bin/assemble /usr/libexec/s2i/assemble
+COPY ./s2i/bin/run /usr/libexec/s2i/run
+COPY ./s2i/bin/save-artifacts /usr/libexec/s2i/save-artifacts
+
+# Make the scripts executable
+RUN chmod +x /usr/libexec/s2i/*
+
+# Set default user for OpenShift
+USER 185
+
+
+
+3. Build the Custom S2I Image Locally:
+
+Navigate to the directory containing the Dockerfile and S2I scripts, then run:
+
+docker build -t my-custom-s2i-image:latest .
+
+
+
+
+Step 2: Push the Custom S2I Image to a Container Registry
+
+1. Tag the Image:
+
+Tag the image for your target registry.
+
+docker tag my-custom-s2i-image:latest <registry_url>/my-project/my-custom-s2i-image:latest
+
+
+
+2. Push the Image:
+
+Push the image to the registry (replace <registry_url> with your actual registry URL).
+
+docker push <registry_url>/my-project/my-custom-s2i-image:latest
+
+Ensure the image is now accessible by your OpenShift cluster. You may need to configure access permissions if using a private registry.
+
+
+
+
+Step 3: Create or Update the bc.yaml BuildConfig File
+
+1. Create the bc.yaml File:
+
+Define the BuildConfig to use the custom S2I image. Here’s the bc.yaml:
+
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: redis-kafka-combined
+spec:
+  source:
+    type: Git
+    git:
+      uri: "<placeholder_repo_url>"  # Placeholder repo URL; actual cloning is in `assemble`
+  strategy:
+    type: Source
+    sourceStrategy:
+      from:
+        kind: DockerImage
+        name: "<registry_url>/my-project/my-custom-s2i-image:latest"  # Custom S2I image URL
+      env:
+        - name: REDIS_REPO_URL
+          value: "<redis_repo_url>"  # Replace with the actual Redis repo URL
+        - name: KAFKA_REPO_URL
+          value: "<kafka_repo_url>"  # Replace with the actual Kafka repo URL
+  output:
+    to:
+      kind: ImageStreamTag
+      name: "redis-kafka-combined:latest"
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
+
+Replace <registry_url>, <redis_repo_url>, and <kafka_repo_url> with the actual URLs.
+
+
+
+2. Apply the BuildConfig to OpenShift:
+
+Run the following command to create the BuildConfig in OpenShift:
+
+oc apply -f bc.yaml
+
+
+
+
+Step 4: Start the Build Process
+
+1. Start the Build:
+
+Start the build manually to test that everything is configured correctly:
+
+oc start-build redis-kafka-combined --follow
+
+
+
+2. Verify the Build Logs:
+
+Check the build logs to ensure the assemble script is running as expected and that both repositories are being cloned and combined correctly.
+
+oc logs -f bc/redis-kafka-combined
+
+Look for output related to cloning the Redis and Kafka repositories. This confirms that your custom S2I image and assemble script are working as intended.
+
+
+
+
+Step 5: Validate the Combined Image
+
+1. Check ImageStream for the Output Image:
+
+Ensure the combined image has been created and tagged as redis-kafka-combined:latest.
+
+oc get imagestreams
+
+
+
+2. Deploy and Test the Combined Image:
+
+Create a deployment in OpenShift using the redis-kafka-combined:latest image to verify the functionality of the combined Redis and Kafka code.
+
+
+
+
+
+---
+
+Summary
+
+1. Prepare and Test Your Custom S2I Scripts: Ensure the assemble script handles both repositories.
+
+
+2. Build and Push the Custom S2I Image: Create and push your custom S2I image to a registry accessible by OpenShift.
+
+
+3. Create a BuildConfig: Reference the custom S2I image and provide repository URLs via environment variables.
+
+
+4. Run and Monitor the Build: Start the build, monitor logs, and verify the combined image output.
+
+
+5. Validate the Deployment: Deploy the combined image in OpenShift for final testing.
+
+
+
+This setup should give you control over the build process in a shared Jenkins pipeline, as it relies on a customized S2I builder that pulls from both repositories. Let me know if there are any specific issues or further customization required!
+
