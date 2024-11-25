@@ -3,3 +3,20 @@ When analyzing various approaches to build a single container image (e.g., using
 Then the analysis should identify the most efficient, modular, and scalable method, ensuring flexible configuration to enable Redis, Kafka, or both, while documenting the process, challenges, and recommendations.
 
 This analysis aims to explore various approaches to build a single container image from multiple repositories containing Redis and Kafka code. The focus will be on evaluating methods like multi-stage Dockerfile, custom S2I, and other feasible techniques to achieve efficiency, modularity, and scalability
+
+Research and Analyze Image-Building Methods
+Investigate different techniques to create a single container image from multiple repositories, including multi-stage Dockerfile and custom S2I.
+Assess each method based on criteria such as efficiency, modularity, scalability, and ease of configuration.
+
+The analysis identified multiple approaches to build a single container image from multiple repositories:
+
+Custom S2I with Additional Sources in bc.yaml:
+
+This method allows combining source repositories during the build process by adding additional sources in the bc.yaml file.
+However, this approach is not feasible in our organization due to policy restrictions.
+Multi-Stage Dockerfile:
+
+This approach uses a multi-stage build to efficiently combine components from multiple repositories.
+The Redis and Kafka code will be fetched and built in separate stages, ensuring proper segregation of build and runtime dependencies.
+The final stage will copy the necessary artifacts, creating a lightweight image that includes only the required runtime components.
+Flexible configurations will be implemented to enable Redis, Kafka, or both through a YAML-based setup.
