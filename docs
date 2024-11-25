@@ -20,3 +20,10 @@ This approach uses a multi-stage build to efficiently combine components from mu
 The Redis and Kafka code will be fetched and built in separate stages, ensuring proper segregation of build and runtime dependencies.
 The final stage will copy the necessary artifacts, creating a lightweight image that includes only the required runtime components.
 Flexible configurations will be implemented to enable Redis, Kafka, or both through a YAML-based setup.
+
+
+Create Multi-Stage Dockerfile for Redis and Kafka Integration
+
+Develop a multi-stage Dockerfile that fetches and builds Redis and Kafka components from their respective repositories.
+Ensure that each component is isolated in separate stages to optimize build and runtime efficiency.
+The final stage should copy only the necessary runtime components to create a lightweight image.
