@@ -27,3 +27,23 @@ Create Multi-Stage Dockerfile for Redis and Kafka Integration
 Develop a multi-stage Dockerfile that fetches and builds Redis and Kafka components from their respective repositories.
 Ensure that each component is isolated in separate stages to optimize build and runtime efficiency.
 The final stage should copy only the necessary runtime components to create a lightweight image.
+..............
+
+
+
+Story Closure Comments
+
+As part of this analysis, we explored multiple approaches to create a single container image from multiple repositories:
+	1.	Custom S2I:
+	•	While this approach allows customization through the assemble script, organizational restrictions prevent us from modifying the assemble script to achieve the desired result.
+	2.	Multi-Stage Dockerfile:
+	•	We successfully created a multi-stage Dockerfile that clones and builds the source code for Redis and Kafka within the container.
+	•	This approach aligns well with modularity and efficiency goals.
+
+Issues Identified:
+	•	We faced challenges installing Git binaries (Linux) inside the container.
+	•	Additionally, cloning repositories without using nbkid proved problematic.
+
+We will continue working on resolving these issues in upcoming sprints to achieve the objective of creating a single container image from multiple repositories.
+
+Note: During the analysis, we also evaluated an alternate approach to consolidate multiple components into a single repository. This method offers flexibility for deploying specific components as per user inputs and will be considered as a parallel solution if needed.
