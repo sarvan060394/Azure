@@ -47,3 +47,7 @@ Issues Identified:
 We will continue working on resolving these issues in upcoming sprints to achieve the objective of creating a single container image from multiple repositories.
 
 Note: During the analysis, we also evaluated an alternate approach to consolidate multiple components into a single repository. This method offers flexibility for deploying specific components as per user inputs and will be considered as a parallel solution if needed.
+
+
+
+curl -H "Authorization: Basic <Base64_Encoded_Auth>" -o oc.zip "$artifactoryUrl"
