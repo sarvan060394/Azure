@@ -1,3 +1,4 @@
+
 Given multiple repositories containing Redis and Kafka code,
 When analyzing various approaches to build a single container image (e.g., using multi-stage Dockerfile, custom S2I, or other techniques),
 Then the analysis should identify the most efficient, modular, and scalable method, ensuring flexible configuration to enable Redis, Kafka, or both, while documenting the process, challenges, and recommendations.
@@ -51,3 +52,8 @@ Note: During the analysis, we also evaluated an alternate approach to consolidat
 
 
 curl -H "Authorization: Basic <Base64_Encoded_Auth>" -o oc.zip "$artifactoryUrl"
+
+
+	•	Given the Kubernetes team is managing multiple components like Dapr across multiple repositories, frequently making cross-component changes, managing independent CI/CD pipelines, and preparing for team and project scalability,
+	•	When evaluating the repository structure to ensure efficient updates, coordinated changes, streamlined CI/CD processes, and support for team growth,
+	•	Then assess how mono-repo and multi-repo approaches handle shared dependencies, cross-repository coordination, pipeline complexity, and scalability for larger teams and projects.
