@@ -159,4 +159,24 @@ Recommendation
 
 This hybrid approach allows flexibility now while preparing for potential future shifts.
 
+f
+
+
+Current Limitation: Multi-Repo Deployment with Shared Pipeline
+
+The key challenge is that your shared Jenkins pipeline currently lacks support for orchestrating multi-repo deployments. This limitation must be addressed to fully realize the benefits of a multi-repo approach.
+
+.... z
+Recommendation: Stick with Multi-Repo
+
+Reasoning:
+
+	1.	Focused Unit Testing:
+	•	Each component (e.g., Kafka, Redis) can be independently tested and validated without impacting other components.
+	2.	Efficient Builds:
+	•	Changes in a single component do not require rebuilding unrelated components, saving time and resources.
+	3.	Autonomous Development:
+	•	Teams working on different components can work independently without blocking or interfering with each other.
+
+
 
