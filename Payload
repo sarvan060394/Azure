@@ -1,108 +1,15 @@
-from apscheduler.schedulers.background import BackgroundScheduler
-
-scheduler = BackgroundScheduler()
-scheduler.start()
-
-def check_redis(redis_host, redis_port, sidecar_url):
-    try:
-        r = redis.StrictRedis(host=redis_host, port=redis_port)
-        r.ping()
-        print("Redis is back online")
-        print(redis_host)
-        notify_sidecar(sidecar_url)
-        if scheduler.get_job('redis_monitor'):
-            scheduler.remove_job('redis_monitor')
-    except redis.ConnectionError:
-        print("Redis still down. Checking again in 5 seconds...")
-
-def notify_sidecar(sidecar_url):
-    response = requests.get(sidecar_url)
-    if response.status_code == 200:
-        print("Notified sidecar to restart")
-    else:
-        print("Failed to notify sidecar")
-
-@app.route('/start-monitoring', methods=['POST'])
-def start_monitoring():
-    payload = request.get_json()
-    redis_host = payload['redis_host']
-    redis_port = payload['redis_port']
-    sidecar_url = payload['sidecar_url']
-    print(redis_host)
-    print(redis_port)
-    print(sidecar_url)
-
-    job_id = 'redis_monitor'
-    scheduler.add_job(check_redis, 'interval', seconds=5, id=job_id, args=[redis_host, redis_port, sidecar_url])
-    print("Started monitoring Redis")
-    return "Monitoring started", 200
-
-----------------------------------------------------------------------------------------------------
-
-from flask import Flask, request
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
-import redis
-
-app = Flask(__name__)
-scheduler = BackgroundScheduler()
-scheduler.start()
-
-def check_service(service_type, service_host, service_port, sidecar_url):
-    try:
-        if service_type == 'redis':
-            r = redis.StrictRedis(host=service_host, port=service_port)
-            r.ping()
-        # Add checks for other service types (e.g., Kafka) here
-        print(f"{service_type.capitalize()} is back online")
-        notify_sidecar(sidecar_url)
-        if scheduler.get_job(f'{service_type}_monitor'):
-            scheduler.remove_job(f'{service_type}_monitor')
-    except Exception as e:
-        print(f"{service_type.capitalize()} still down. Checking again in 5 seconds... Error: {e}")
-
-def notify_sidecar(sidecar_url):
-    response = requests.get(sidecar_url)
-    if response.status_code == 200:
-        print("Notified sidecar to restart")
-    else:
-        print("Failed to notify sidecar")
-
-@app.route('/start-monitoring', methods=['POST'])
-def start_monitoring():
-    payload = request.get_json()
-    service_type = payload['service_type']
-    service_host = payload['service_host']
-    service_port = payload['service_port']
-    sidecar_url = payload['sidecar_url']
-    print(service_type, service_host, service_port, sidecar_url)
-
-    job_id = f'{service_type}_monitor'
-    scheduler.add_job(check_service, 'interval', seconds=5, id=job_id, args=[service_type, service_host, service_port, sidecar_url])
-    print(f"Started monitoring {service_type}")
-    return "Monitoring started", 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
----------------------------------------------------------------
-Kafka
---------------------------------------------------------------
-
-from kafka import KafkaConsumer
-
-def check_service(service_type, service_host, service_port, sidecar_url):
-    try:
-        if service_type == 'redis':
-            r = redis.StrictRedis(host=service_host, port=service_port)
-            r.ping()
-        elif service_type == 'kafka':
-            consumer = KafkaConsumer(bootstrap_servers=f'{service_host}:{service_port}')
-            consumer.topics()  # This will throw an exception if Kafka is not reachable
-        # Add more service checks as needed
-        print(f"{service_type.capitalize()} is back online")
-        notify_sidecar(sidecar_url)
-        if scheduler.get_job(f'{service_type}_monitor'):
-            scheduler.remove_job(f'{service_type}_monitor')
-    except Exception as e:
-        print(f"{service_type.capitalize()} still down. Checking again in 5 seconds... Error: {e}")
-
+Deliverables for Year-End Self Evaluation
+	•	Delivered a POC for building single container images using Python multistage Docker to optimize image size and efficiency.
+	•	Performed analysis and created multi-feature container images to support KUBES capabilities.
+	•	Conducted KUBES performance testing, including stress and load testing for Kafka REST Proxy and KUBES Proxy services.
+	•	Enabled Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) for KUBES applications to optimize resource utilization.
+	•	Enabled SSL for KUBES applications to enhance security and supported production deployment.
+	•	Implemented KUBES container startup sequence, ensuring all auxiliary components are up before starting the application container.
+	•	Fine-tuned compute resource configurations for Kafka Producer deployments and performed POD T-shirt sizing for optimized resource management.
+	•	Developed a solution to persist Prometheus metrics for KUBE REST Proxy to ensure metric continuity.
+	•	Implemented Resource Service Monitor to handle failures, monitor sidecar state for restarts, and improve service resilience.
+	•	Delivered a Redis cluster setup and resolved cluster creation issues to improve deployment stability.
+	•	Performed POC for generating heap dumps for Java applications with the support of the CTI team.
+	•	Guided and supported the team for all platform-related troubleshooting and issue resolution.
+	•	Contributed to the CML event for the Green Engineering contest, implemented CodeCarbon in the bank’s Jenkins pipeline, and calculated carbon emissions for pipeline stages.
+	•	Supported production deployments by ensuring resource stability, optimized configurations, and continuous monitoring solutions.
