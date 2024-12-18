@@ -27,3 +27,55 @@ Then all JAR files should be copied into a single specified directory (e.g., /ta
 
 Analyze how to configure the parent pom.xml to handle multiple module builds and consolidate all JAR files in a single location.
 Update the parent pom.xml with a Maven plugin (e.g., maven-dependency-plugin or maven-assembly-plugin) to copy all JAR files to a target directory.
+
+
+
+# Stage 1: Use Python to fetch the source code
+FROM python:3.10-slim AS builder
+
+# Install required Python libraries
+RUN pip install requests
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy the Python script
+COPY clone_bitbucket_zip.py .
+
+# Set environment variables for credentials
+ARG BITBUCKET_USERNAME
+ARG BITBUCKET_PASSWORD
+ENV BITBUCKET_USERNAME=${BITBUCKET_USERNAME}
+ENV BITBUCKET_PASSWORD=${BITBUCKET_PASSWORD}
+
+# Run the Python script to clone repositories
+RUN python clone_bitbucket_zip.py
+
+# Stage 2: Build JARs using OpenJDK
+FROM openjdk:11-jdk-slim AS app_builder
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy the source code from the first stage
+COPY --from=builder /workspace/source_code /workspace/source_code
+
+# Build repository_x and repository_y using Gradle
+RUN cd /workspace/source_code/repo_x && ./gradlew build && \
+    mkdir -p /deployment/x/jar && \
+    cp build/libs/*.jar /deployment/x/jar/
+
+RUN cd /workspace/source_code/repo_y && ./gradlew build && \
+    mkdir -p /deployment/y/jar && \
+    cp build/libs/*.jar /deployment/y/jar/
+
+# Final stage: Produce minimal image with only the JARs
+FROM openjdk:11-jdk-slim
+
+WORKDIR /app
+
+# Copy built JAR files
+COPY --from=app_builder /deployment/x/jar /deployment/x/jar
+COPY --from=app_builder /deployment/y/jar /deployment/y/jar
+
+CMD ["java", "-version"]
