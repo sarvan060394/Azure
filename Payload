@@ -79,3 +79,63 @@ COPY --from=app_builder /deployment/x/jar /deployment/x/jar
 COPY --from=app_builder /deployment/y/jar /deployment/y/jar
 
 CMD ["java", "-version"]
+
+
+
+...............
+
+import os
+import requests
+import zipfile
+import io
+import sys
+
+# Bitbucket configuration
+BITBUCKET_USERNAME = os.getenv("BITBUCKET_USERNAME")  # Username from environment variable
+BITBUCKET_PASSWORD = os.getenv("BITBUCKET_PASSWORD")  # Password from environment variable
+
+REPOSITORIES = {
+    "repo_x": "https://api.bitbucket.org/2.0/repositories/your_team/repository_x/src/master/",
+    "repo_y": "https://api.bitbucket.org/2.0/repositories/your_team/repository_y/src/master/"
+}
+
+CLONE_DIR = "/workspace/source_code"  # Target directory to store source code
+
+
+def download_and_extract(repo_name, repo_url, destination):
+    print(f"Downloading repository '{repo_name}'...")
+
+    # Add basic authentication
+    response = requests.get(repo_url + "?format=zip", auth=(BITBUCKET_USERNAME, BITBUCKET_PASSWORD))
+
+    if response.status_code == 200:
+        print(f"Successfully downloaded '{repo_name}', extracting now...")
+        try:
+            # Extract the zip file
+            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                z.extractall(destination)
+            print(f"Repository '{repo_name}' extracted to '{destination}'")
+        except zipfile.BadZipFile as e:
+            print(f"Error extracting '{repo_name}': {e}")
+            sys.exit(1)
+    else:
+        print(f"Error: Unable to download '{repo_name}'. Status code: {response.status_code}")
+        sys.exit(1)
+
+
+def main():
+    if not BITBUCKET_USERNAME or not BITBUCKET_PASSWORD:
+        print("Error: BITBUCKET_USERNAME and BITBUCKET_PASSWORD must be set in environment variables.")
+        sys.exit(1)
+
+    os.makedirs(CLONE_DIR, exist_ok=True)  # Create the workspace directory if it doesn't exist
+
+    # Download and extract each repository
+    for repo_name, repo_url in REPOSITORIES.items():
+        destination = os.path.join(CLONE_DIR, repo_name)
+        os.makedirs(destination, exist_ok=True)
+        download_and_extract(repo_name, repo_url, destination)
+
+
+if __name__ == "__main__":
+    main()
