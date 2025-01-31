@@ -1,493 +1,81 @@
-Title: Sidecar Failover Scenarios and Mitigations
+Based on the uploaded images, you can structure your deck to explain the current process of creating a certificate in Venafi as follows:
 
-1. Introduction
-This document delves into the technical intricacies of sidecar failover scenarios within the context of application integration. It provides comprehensive mitigations for each scenario to ensure robustness and reliability in sidecar-to-app and sidecar-to-service communications.
+Venafi Certificate Creation Process
 
-2. App to Sidecar Integration
-2.1 App to Sidecar Connectivity
-Scenario: When integrating an application with a sidecar, determining the sidecar's status is crucial for seamless operation. Traditional methods involving explicit health checks can be cumbersome and inefficient.
+1. Overview of Venafi
+	•	Venafi is used for certificate management.
+	•	Developers generate certificates for development environments.
+	•	System engineers generate certificates for production environments.
+	•	Certificates are signed by a Bank-approved Certificate Authority.
 
-Mitigation: Adopting an HTTP-based health check mechanism alleviates the need for explicit health checks. Here, the consumer app continuously monitors the sidecar's status through lightweight HTTP requests. This approach not only simplifies monitoring but also ensures real-time detection of sidecar failures, facilitating timely remedial actions.
+2. Steps to Create a Certificate in Venafi
 
-2.2 Sidecar Crash
-Scenario: In the event of a sidecar container crash, the main application's ability to communicate with the sidecar is disrupted, leading to potential service interruptions.
+Step 1: Log in to Venafi
+	•	Access the Venafi portal using valid credentials.
 
-Mitigation: Implementing liveness and readiness probes in the sidecar container offers proactive fault tolerance. The liveness probe periodically checks the sidecar's health status and automatically restarts the container upon detection of failure. Simultaneously, the readiness probe ensures that the sidecar is fully operational before serving incoming traffic, thus preventing premature communication attempts from the main application.
+Step 2: Find the Correct Policy Location
+	•	Navigate to the policy directory where the certificate needs to be added.
+	•	Example: TI - Middleware Engineering → Container-test (actual policy depends on the use case).
 
-2.3 Sidecar Resource Exhaustion
-Scenario: Excessive resource utilization, such as CPU and memory, can render the sidecar unresponsive, adversely affecting application performance.
+Step 3: Add a New Server Certificate
+	•	Right-click and select “Server Certificate” to create a new certificate.
 
-Mitigation: Conducting comprehensive performance and load analysis is essential to ascertain the optimal resource allocation for the sidecar. Leveraging tools like Prometheus and Grafana facilitates in-depth monitoring and analysis of resource utilization patterns. Subsequently, deploying a guaranteed pod in OpenShift ensures dedicated resource allocation to the sidecar, mitigating the risk of resource exhaustion and associated service degradation.
+Step 4: Populate Certificate Details
+	•	Certificate Name and Common Name should be identical.
+	•	Click “Edit” on Management Type and select “Enrollment”.
 
-2.4 Delay in Sidecar's Response
-Scenario: Delays in sidecar response times, whether due to network congestion or processing bottlenecks, pose challenges for the consumer application in determining the sidecar's status.
+Step 5: Configure CSR and Hash Algorithm
+	•	Choose Service Generated CSR.
+	•	Use SHA-256 as the hash algorithm.
 
-Mitigation: Configuring appropriate timeout values and implementing robust retry logic in the consumer application mitigates the impact of delayed sidecar responses. By defining timeout thresholds tailored to the application's latency requirements and incorporating exponential backoff strategies in retry mechanisms, the consumer application effectively manages temporary failures and ensures timely handling of sidecar interactions.
+Step 6: Configure Subject Alternate Name (SAN)
+	•	Add the Common Name to the SAN field.
+	•	If multiple alternate names are required, specify them here.
 
-3. Sidecar to Services Integration
-3.1 No Response from Redis Cluster
-Scenario: When the sidecar encounters unresponsive services, such as a Redis cluster, during integration, excessive retry attempts can exacerbate service degradation and resource consumption.
+Step 7: Review and Verify Other Information
+	•	Ensure that the certificate type (e.g., G3B) is selected correctly.
 
-Mitigation: Employing an exponential backoff algorithm regulates retry intervals, preventing aggressive reconnection attempts that could overwhelm the Redis cluster upon restoration. Additionally, enforcing timeout rules for sidecar-to-service connections prevents prolonged waiting periods, enhancing resilience and resource efficiency.
+Step 8: Fill in Custom Fields
+	•	Mandatory fields include:
+	•	AIT Number
+	•	Certificate Owner DG & NBKID
+	•	Certificate Owner Email
+	•	Set the Deployment Environment as Non-Production unless specified otherwise.
 
-3.2 Redis Cluster is Back Online
-Scenario: Following a Redis cluster restoration, seamless reintegration of the sidecar with the service is imperative to restore normal operation.
+Step 9: Save and Deploy
+	•	Save all the details and submit the request for approval.
+	•	Monitor the approval status and download the certificate once issued.
 
-Mitigation: Upon detecting Redis cluster availability, the sidecar initiates reconnection attempts. However, to prevent prolonged downtime and ensure efficient resource utilization, it ceases retry attempts after a predefined threshold. Subsequently, employing a resource monitoring application or operator within the OpenShift environment facilitates automated detection of service restoration and triggers sidecar restarts, enabling seamless reconnection with the Redis cluster.
+Key Components of Certificate Manager
+	•	Certificate Issuance: Automated process for generating certificates.
+	•	Renewal Policy: Ensures timely renewal before expiration.
+	•	Revocation & Expiry Handling: Manages certificate deactivation when no longer needed.
 
-4. Conclusion
-By meticulously addressing various failover scenarios and implementing tailored mitigations, this document establishes a robust framework for sidecar integration within complex application ecosystems. Leveraging advanced monitoring, fault tolerance, and automation techniques ensures enhanced resilience, scalability, and performance, thereby fortifying the foundation of modern distributed systems architecture.
-______________\\\
+Certificate Lifecycle in Certificate Manager
+	1.	Request Initiation: User requests a certificate in Venafi.
+	2.	Approval Workflow: Approval by the designated approvers.
+	3.	Certificate Issuance: Certificate is generated and signed.
+	4.	Deployment: Certificate is deployed in the required environment.
+	5.	Monitoring & Renewal: Expiry tracking and automatic renewal reminders.
+	6.	Revocation (if needed): Certificate is revoked in case of a security risk.
 
--------------------------------------
+Would you like any additional details or modifications?
 
-from flask import Flask, jsonify
-from rediscluster import RedisCluster
-from redis.exceptions import ConnectionError
 
-app = Flask(__name__)
+You can include these additional steps in your deck under “Pre-requisites for Venafi Access”:
 
-# Define Redis host and port
-redis_host = 'localhost'  # Change to your Redis host if different
-redis_port = 6379         # Change to your Redis port if different
+Pre-requisites for Venafi Access
 
-def check_redis_standalone():
-    try:
-        # Use RedisCluster to connect to a single node (standalone)
-        startup_nodes = [{"host": redis_host, "port": redis_port}]
-        r = RedisCluster(startup_nodes=startup_nodes, decode_responses=True, skip_full_coverage_check=True)
-        
-        # Check connection
-        r.ping()
-        return "Redis is up and running"
-    except ConnectionError:
-        return "Redis is down"
+Before a user can generate certificates in Venafi, they must complete the following steps:
+	1.	Complete Required Trainings
+	•	Users must undergo mandatory training to understand Venafi usage and security policies.
+	•	Training completion is required before portal access is granted.
+	2.	Raise an ARM Request for Policy Tree Access
+	•	Users need to submit an Access Request Management (ARM) ticket.
+	•	The request must specify the required policy tree to which access is needed.
+	•	Approval is required before certificate creation can proceed.
 
-@app.route('/check_redis')
-def check_redis():
-    status = check_redis_standalone()
-    return jsonify(status=status)
+This ensures only authorized personnel can manage certificates and follow security best practices.
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
-
-_______________________________________________________
-
-from flask import Flask, jsonify
-import redis
-
-app = Flask(__name__)
-
-# Define Redis host and port
-redis_host = 'localhost'  # Change to your Redis host if different
-redis_port = 6379         # Change to your Redis port if different
-
-def check_redis_standalone():
-    try:
-        r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
-        
-        # Check connection
-        r.ping()
-        return "Redis is up and running"
-    except redis.ConnectionError:
-        return "Redis is down"
-
-@app.route('/check_redis')
-def check_redis():
-    status = check_redis_standalone()
-    return jsonify(status=status)
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
-------------------------------------------------------------------------
-
-Check redis standalone continuously:
-
-import redis
-import time
-import logging
-
-# Configure logging
-logging.basicConfig(filename='redis_status.log', level=logging.INFO, format='%(asctime)s - %(message)s')
-
-# Define Redis host and port
-redis_host = 'localhost'  # Change to your Redis host if different
-redis_port = 6379         # Change to your Redis port if different
-
-def check_redis_standalone():
-    try:
-        r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
-        r.ping()
-        return True
-    except redis.ConnectionError:
-        return False
-
-def monitor_redis():
-    while True:
-        if not check_redis_standalone():
-            logging.info("Redis is down")
-        else:
-            logging.info("Redis is up and running")
-        time.sleep(60)  # Check every 60 seconds
-
---------------------------------------------------------------
-
-import redis
-import time
-import logging
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-
-REDIS_HOST = 'your_redis_host'
-REDIS_PORT = 6379
-
-def check_redis():
-    try:
-        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-        if r.ping():
-            logging.info("Redis server is up.")
-        else:
-            logging.warning("Redis server is down.")
-    except redis.ConnectionError:
-        logging.error("Redis server is down.")
-
-if __name__ == "__main__":
-    while True:
-        check_redis()
-        time.sleep(10)  # Check every 10 seconds
-------------------------------------------------------------------------------
-
-from flask import Flask
-import redis
-import threading
-import time
-import logging
-
-app = Flask(__name__)
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-
-REDIS_HOST = 'your_redis_host'
-REDIS_PORT = 6379
-CHECK_INTERVAL = 10  # Check every 10 seconds
-
-def check_redis():
-    while True:
-        try:
-            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-            if r.ping():
-                log_message = "Redis server is up."
-                logging.info(log_message)
-            else:
-                log_message = "Redis server is down."
-                logging.warning(log_message)
-        except redis.ConnectionError:
-            log_message = "Redis server is down."
-            logging.error(log_message)
-        time.sleep(CHECK_INTERVAL)
-
-if __name__ == "__main__":
-    # Start the Redis check in a separate thread
-    thread = threading.Thread(target=check_redis)
-    thread.daemon = True
-    thread.start()
-
-    # Run the Flask app
-    app.run(host='0.0.0.0', port=80)
------------------------------------------------------------------------------
-Hitting sidecar endpoint from python:
------------------------------------------------------------------------------
-
-from flask import Flask, request
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
-import redis
-import os
-
-app = Flask(__name__)
-scheduler = BackgroundScheduler()
-scheduler.start()
-
-REDIS_HOST = os.getenv('REDIS_HOST', 'redis-server-host')
-REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
-SIDECAR_URL = os.getenv('SIDECAR_URL', 'http://sidecar:5000/restart')
-
-def check_redis():
-    try:
-        r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
-        r.ping()
-        print("Redis is back online")
-        notify_sidecar()
-        scheduler.remove_job('redis_monitor')
-    except redis.ConnectionError:
-        print("Redis still down. Checking again in 5 seconds...")
-
-def notify_sidecar():
-    response = requests.post(SIDECAR_URL)
-    if response.status_code == 200:
-        print("Notified sidecar to restart")
-    else:
-        print("Failed to notify sidecar")
-
-@app.route('/start-monitoring', methods=['POST'])
-def start_monitoring():
-    scheduler.add_job(check_redis, 'interval', seconds=5, id='redis_monitor')
-    return "Started monitoring Redis", 200
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
-----------------------------------------------------------------
-connecting to redis cluster from resource monitor
----------------------------------------------------------------
-
-from flask import Flask, jsonify
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
-from rediscluster import RedisCluster
-import os
-
-app = Flask(__name__)
-scheduler = BackgroundScheduler()
-scheduler.start()
-
-REDIS_NODES = [{'host': 'redis-cluster-ip', 'port': '6379'}]  # Replace with your Redis cluster nodes
-SIDECAR_URL = os.getenv('SIDECAR_URL', 'http://sidecar:5000/restart')
-
-def check_redis():
-    try:
-        # Connect to Redis cluster
-        redis_conn = RedisCluster(startup_nodes=REDIS_NODES, decode_responses=True)
-
-        # Ping one of the nodes to check connection
-        ping_response = redis_conn.ping()
-
-        if ping_response:
-            print("Redis cluster is reachable")
-            notify_sidecar()
-            scheduler.remove_job('redis_monitor')
-        else:
-            print("Redis cluster ping failed")
-    except Exception as e:
-        print(f"Error connecting to Redis cluster: {str(e)}")
-
-def notify_sidecar():
-    try:
-        response = requests.post(SIDECAR_URL)
-        if response.status_code == 200:
-            print("Notified sidecar to restart")
-        else:
-            print("Failed to notify sidecar")
-    except Exception as e:
-        print(f"Error notifying sidecar: {str(e)}")
-
-@app.route('/start-monitoring', methods=['POST'])
-def start_monitoring():
-    scheduler.add_job(check_redis, 'interval', seconds=5, id='redis_monitor')
-    return jsonify({"message": "Started monitoring Redis cluster"}), 200
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
-------------------------------------------------------------------------
-
-sidecar - Restart
-----------------------------------------------------------------------
-from flask import Flask, request, jsonify
-
-app = Flask(__name__)
-
-# Flag to control error triggering
-trigger_error = False
-
-@app.route("/healthz")
-def liveness_probe():
-  """Liveness probe endpoint to check app health."""
-  if trigger_error:
-    return jsonify({"error": "Failing liveness probe"}), 500
-  return jsonify({"status": "healthy"}), 200
-
-@app.route("/teststart")
-def test_start():
-  """Endpoint to trigger an error for liveness probe."""
-  global trigger_error
-  trigger_error = True
-  return jsonify({"message": "Error triggered"}), 400
-
-if __name__ == "__main__":
-  app.run(host="0.0.0.0", port=5000)
-
------------------------------------------------------------------------
-
-import redis
-from flask import Flask, request, jsonify
-
-# Redis configuration
-REDIS_HOST = "localhost"  # Replace with your Redis host
-REDIS_PORT = 6379
-REDIS_RETRY_COUNT = 3
-
-# Resource monitor URL
-RESOURCE_MONITOR_URL = "http://resourcemonitor.com/start-monitoring"
-
-app = Flask(__name__)
-
-# Flag to control error triggering
-trigger_error = False
-
-
-def connect_to_redis():
-  """Establishes a connection to the Redis server with retries."""
-  for attempt in range(REDIS_RETRY_COUNT + 1):
-    try:
-      r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-      r.ping()  # Test connection
-      return r
-    except redis.exceptions.ConnectionError as e:
-      if attempt == REDIS_RETRY_COUNT:
-        print(f"Failed to connect to Redis after {attempt + 1} attempts: {e}")
-        # Trigger resource monitor
-        trigger_resource_monitor()
-      else:
-        print(f"Retrying Redis connection (attempt {attempt + 1}/{REDIS_RETRY_COUNT})...")
-  return None  # Connection failed
-
-
-def trigger_resource_monitor():
-  """Sends a request to the resource monitor URL."""
-  try:
-    response = requests.get(RESOURCE_MONITOR_URL)
-    response.raise_for_status()  # Raise exception for non-2xx status codes
-    print(f"Successfully triggered resource monitoring: {response.text}")
-  except requests.exceptions.RequestException as e:
-    print(f"Failed to trigger resource monitor: {e}")
-
-
-@app.route("/healthz")
-def liveness_probe():
-  """Liveness probe endpoint to check app health."""
-  if trigger_error:
-    return jsonify({"error": "Failing liveness probe"}), 500
-  try:
-    # Attempt Redis connection for health check
-    redis_client = connect_to_redis()
-    if redis_client is None:
-      return jsonify({"error": "Failed to connect to Redis"}), 500
-    return jsonify({"status": "healthy"}), 200
-  except Exception as e:
-    return jsonify({"error": f"Unexpected error: {e}"}), 500
-
-
-@app.route("/testrestart")
-def test_restart():
-  """Endpoint to trigger an error for liveness probe."""
-  global trigger_error
-  trigger_error = True
-  return jsonify({"message": "Error triggered"}), 400
-
-
-@app.route("/cache/<key>", methods=["GET", "SET"])
-def cache_operation(key):
-  """Handles cache operations (GET and SET) using Redis."""
-  redis_client = connect_to_redis()
-  if redis_client is None:
-    return jsonify({"error": "Failed to connect to Redis"}), 500
-
-  if request.method == "GET":
-    value = redis_client.get(key)
-    if value is None:
-      return jsonify({"message": "Key not found in cache"}), 404
-    return jsonify({"value": value.decode("utf-8")}), 200
-  elif request.method == "SET":
-    data = request.get_json()
-    if not data:
-      return jsonify({"error": "Missing data in request body"}), 400
-    redis_client.set(key, data.get("value").encode("utf-8"))
-    return jsonify({"message": "Value cached successfully"}), 201
-  else:
-    return jsonify({"error": "Unsupported method"}), 405
-
-if __name__ == "__main__":
-  from requests import __version__ as requests_version
-  print(f"Using requests library version: {requests_version}")
-  app.run(host="0.0.0.0", port=5000)
-
--------------------------------------------------------------------------
-
-import redis
-from flask import Flask, request, jsonify
-
-# Redis configuration
-REDIS_HOST = "localhost"  # Replace with your Redis host
-REDIS_PORT = 6379
-REDIS_RETRY_COUNT = 3
-
-# Resource monitor URL
-RESOURCE_MONITOR_URL = "http://resourcemonitor.com/start-monitoring"
-
-app = Flask(__name__)
-
-# Flag to control error triggering
-trigger_error = False
-
-
-def connect_to_redis():
-  """Establishes a connection to the Redis server with retries."""
-  for attempt in range(REDIS_RETRY_COUNT):
-    try:
-      r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-      r.ping()  # Test connection
-      return True
-    except redis.exceptions.ConnectionError as e:
-      if attempt == REDIS_RETRY_COUNT - 1:
-        print(f"Failed to connect to Redis after {attempt + 1} attempts: {e}")
-        # Trigger resource monitor
-        trigger_resource_monitor()
-      else:
-        print(f"Retrying Redis connection (attempt {attempt + 1}/{REDIS_RETRY_COUNT})...")
-  return False  # Connection failed
-
-
-def trigger_resource_monitor():
-  """Sends a request to the resource monitor URL."""
-  try:
-    response = requests.get(RESOURCE_MONITOR_URL)
-    response.raise_for_status()  # Raise exception for non-2xx status codes
-    print(f"Successfully triggered resource monitoring: {response.text}")
-  except requests.exceptions.RequestException as e:
-    print(f"Failed to trigger resource monitor: {e}")
-
-
-@app.route("/healthz")
-def liveness_probe():
-  """Liveness probe endpoint to check app health."""
-  if connect_to_redis():
-    return jsonify({"status": "healthy"}), 200
-  else:
-    return jsonify({"error": "Failed to connect to Redis"}), 500
-
-
-@app.route("/teststart")
-def test_restart():
-  """Endpoint to trigger an error for liveness probe."""
-  global trigger_error
-  trigger_error = True
-  return jsonify({"message": "Error triggered"}), 400
-
-
-@app.route("/connect")
-def connect_info():
-  """Endpoint to attempt Redis connection."""
-  if connect_to_redis():
-    return jsonify({"status": "connected to Redis"}), 200
-  else:
-    return jsonify({"error": "Failed to connect to Redis"}), 500
-
-
-if __name__ == "__main__":
-  from requests import __version__ as requests_version
-  print(f"Using requests library version: {requests_version}")
-  app.run(host="0.0.0.0", port=5000)
-
-
-
-
+Would you like to add any screenshots or diagrams to illustrate the process?
 
