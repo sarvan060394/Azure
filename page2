@@ -79,3 +79,33 @@ This ensures only authorized personnel can manage certificates and follow securi
 
 Would you like to add any screenshots or diagrams to illustrate the process?
 
+
+
+JIRA Story: Unified Repository for Kubernetes Application
+
+Description:
+Currently, our source code exists in both our repository and the client’s repository, where it is built and deployed within their namespace. This setup requires maintaining duplicate codebases and increases complexity.
+
+To streamline the deployment process, we need to build a stable container image and push it to a common registry (Artifactory). The client-side repository will only contain deployment manifests to pull the image from the registry, eliminating the need to maintain source code in multiple places.
+
+This approach will ensure consistency, reduce maintenance overhead, and simplify client-side deployments.
+
+Acceptance Criteria:
+	1.	Stable Image Creation:
+	•	The application code should be built into a stable container image.
+	•	The image should be tagged appropriately (e.g., versioned or latest).
+	2.	Push Image to Artifactory:
+	•	The container image should be successfully pushed to the common registry (Artifactory).
+	•	The image should be accessible by client namespaces.
+	3.	Update Client Repository:
+	•	The client-side repository should contain only deployment manifests.
+	•	The manifests should reference the image from Artifactory instead of building it locally.
+	4.	Validation & Testing:
+	•	Verify that the application deploys successfully in the client namespace using the new approach.
+	•	Ensure the client-side pipeline pulls the correct image version from Artifactory.
+	5.	Documentation & Communication:
+	•	Update internal documentation to reflect the new image-based deployment approach.
+	•	Inform client teams about the changes and provide necessary guidance.
+
+Would you like to include any additional criteria or details specific to your environment?
+
