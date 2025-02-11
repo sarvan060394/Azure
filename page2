@@ -108,4 +108,27 @@ Acceptance Criteria:
 	•	Inform client teams about the changes and provide necessary guidance.
 
 Would you like to include any additional criteria or details specific to your environment?
+.....
 
+JIRA Comment to Close the Story:
+
+The implementation for this story has been successfully completed. Below are the key updates made:
+	1.	Stable Image Creation & Push to Shared Registry:
+	•	We have built a stable container image for the application.
+	•	The image has been successfully pushed to the shared registry (Artifactory).
+	•	Proper tagging and versioning have been implemented to ensure consistency in deployments.
+	2.	Client-Side Repository Updates:
+	•	The client-side repository has been updated to contain only the necessary deployment manifests.
+	•	The manifests are configured to pull the application image from the shared registry instead of building it locally.
+	•	This ensures a streamlined and uniform deployment process across all client environments.
+	3.	Jenkins Pipeline for Deployment:
+	•	A Jenkinsfile has been added to the client-side repository to automate the deployment of the application in OpenShift.
+	•	This allows for a standardized deployment process without requiring manual intervention.
+	4.	Configuration Management:
+	•	A properties file has been added to the client repository to allow for environment-specific configurations.
+	•	This ensures that necessary application parameters can be dynamically set during deployment.
+	5.	Validation & Testing:
+	•	Verified that the application deploys successfully in the client namespace using the new setup.
+	•	Tested the end-to-end deployment process through Jenkins to ensure the correct image is pulled and deployed.
+
+With these changes, the story is now complete, and we can proceed with closing it. Let me know if any further updates or refinements are needed.
