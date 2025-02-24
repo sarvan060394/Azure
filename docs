@@ -290,3 +290,65 @@ We have identified the policy tree where the certificate is created in Venafi by
 	2.	Custom Policy Tree Control: Users can control where their certificate needs to be created by specifying the zone parameter in the Issuer component of Cert Manager. This allows flexibility in defining the target policy tree for certificate issuance.
 
 If further modifications are needed to direct certificate creation to a specific policy tree, users should update the zone configuration in their Issuer definition accordingly.
+
+
+
+You can manually add an existing certificate to cert-manager by creating a Certificate resource that references the existing secret containing the certificate and private key. Here’s how to do it:
+
+1. Ensure cert-manager is Installed
+
+Make sure you have cert-manager installed in your Kubernetes cluster.
+
+2. Store the Existing Certificate in a Kubernetes Secret
+
+If your certificate and key are not already stored in a Kubernetes secret, create one:
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-existing-cert-secret
+  namespace: default  # Change to the appropriate namespace
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64-encoded-cert>
+  tls.key: <base64-encoded-key>
+
+Encode your certificate and key using:
+
+cat cert.pem | base64 -w 0
+cat key.pem | base64 -w 0
+
+Apply the secret:
+
+kubectl apply -f secret.yaml
+
+3. Create a Certificate Resource
+
+Now, create a Certificate resource that references this secret:
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-certificate
+  namespace: default
+spec:
+  secretName: my-existing-cert-secret
+  issuerRef:
+    name: my-issuer  # Reference to a ClusterIssuer or Issuer
+    kind: ClusterIssuer  # Or "Issuer" if it's namespaced
+  commonName: example.com
+  dnsNames:
+    - example.com
+
+	•	Replace my-issuer with your actual cert-manager Issuer or ClusterIssuer name.
+	•	Replace example.com with your actual domain.
+
+Apply the certificate resource:
+
+kubectl apply -f certificate.yaml
+
+4. Cert-Manager Takes Over
+	•	Cert-manager will now manage renewals for the certificate.
+	•	If the certificate was issued using ACME (e.g., Let’s Encrypt), cert-manager will request a renewal before expiration.
+
+Let me know if you need any adjustments based on your specific setup!
