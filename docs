@@ -256,7 +256,8 @@ To address the limitation of our shared Jenkins pipeline and fully enable multi-
 	•	Use a package repository (e.g., JFrog Artifactory, Nexus) to manage shared dependencies across repositories.
 	3.	Adopt a Meta-Repository (Optional):
 	•	Create a lightweight meta-repository to manage versions of all components and trigger cross-repository deployments when necessary.
-	4.	Leverage GitOps Tools:
+	4.	Leverage
+GitOps Tools:
 	•	Use tools like ArgoCD or FluxCD to orchestrate deployments and handle cross-repository dependencies.
 
 Next Steps
@@ -278,3 +279,14 @@ By addressing pipeline orchestration and dependency management challenges, the m
 Owner: [Team/Owner Name]
 Last Updated: [Date]
 
+
+
+
+
+JIRA Comment:
+
+We have identified the policy tree where the certificate is created in Venafi by Cert Manager.
+	1.	Default Policy Tree: By default, Cert Manager is creating certificates in Venafi under the predefined policy tree. This is set within the configuration and does not require any additional parameters from the user.
+	2.	Custom Policy Tree Control: Users can control where their certificate needs to be created by specifying the zone parameter in the Issuer component of Cert Manager. This allows flexibility in defining the target policy tree for certificate issuance.
+
+If further modifications are needed to direct certificate creation to a specific policy tree, users should update the zone configuration in their Issuer definition accordingly.
