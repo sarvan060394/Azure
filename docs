@@ -352,3 +352,29 @@ kubectl apply -f certificate.yaml
 	•	If the certificate was issued using ACME (e.g., Let’s Encrypt), cert-manager will request a renewal before expiration.
 
 Let me know if you need any adjustments based on your specific setup!
+
+
+
+
+JIRA Story Description:
+The goal of this story is to analyze the current deployment process across AIT and identify any gaps that prevent the adoption of a shared image model. This includes:
+	•	Understanding how applications are currently deployed.
+	•	Identifying dependencies and constraints in the deployment workflow.
+	•	Evaluating the feasibility of using a shared image model.
+	•	Documenting challenges and potential solutions for adopting the shared image model.
+
+Acceptance Criteria (Given-When-Then format):
+	1.	Understanding the Current Deployment Process
+	•	Given that the deployment process across AIT is being analyzed,
+	•	When the existing deployment workflows, tools, and configurations are reviewed,
+	•	Then a detailed document should be created outlining the current process, including dependencies, constraints, and areas of improvement.
+	2.	Identifying Gaps in Using a Shared Image Model
+	•	Given that the current deployment process is documented,
+	•	When the feasibility of using a shared image model is assessed,
+	•	Then a list of gaps or blockers preventing the adoption of a shared image model should be identified and documented.
+	3.	Proposing Solutions and Next Steps
+	•	Given that gaps in the deployment process have been identified,
+	•	When potential solutions or workarounds are explored,
+	•	Then a report should be created detailing recommendations, including required changes, risks, and next steps for enabling a shared image model.
+
+Would you like to include any additional details or constraints?
