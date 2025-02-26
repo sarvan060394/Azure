@@ -180,3 +180,16 @@ Would you like detailed recommendations for overcoming these limitations?
 
 
 Would you like detailed YAML configurations for network policy adjustments?
+
+
+JIRA Comment:
+
+As per the current deployment strategy:
+	•	For lower lanes, we are using the native pipeline.
+	•	For higher lanes, we are using XLR for deployments.
+
+As part of the unified repo solution:
+	•	The client’s repository will contain only the necessary Jenkinsfile and manifest files.
+	•	The Kubes Kafka image will be published to a common/shared repository.
+	•	The client’s manifest will be configured to pull and run the Kubes image in their namespace using their service ID.
+	•	For higher lanes, deployment requests must be raised with a stable Kubes image, and the APSE team will handle the deployment process.
