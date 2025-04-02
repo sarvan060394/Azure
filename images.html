@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Versions</title>
+</head>
+<body>
+    <h2>Versions for {{ image_name }}</h2>
+    {% if image_versions %}
+        <form action="/delete" method="post">
+            <input type="hidden" name="image_name" value="{{ image_name }}">
+            <ul>
+                {% for version in image_versions %}
+                    <li>
+                        <input type="radio" name="selected_version" value="{{ version }}" required>
+                        {{ version }}
+                    </li>
+                {% endfor %}
+            </ul>
+            <button type="submit">Delete Selected Version</button>
+        </form>
+    {% else %}
+        <p>No versions found for '{{ image_name }}'.</p>
+    {% endif %}
+    <br>
+    <a href="/">Back</a>
+</body>
+</html>
