@@ -1,0 +1,73 @@
+from fastapi import FastAPI, Query, HTTPException
+from typing import List, Optional
+from kubernetes import client, config
+
+app = FastAPI()
+
+@app.delete("/delete-stale-images/")
+async def delete_stale_images(
+    openshift_cluster_url: str = Query(..., description="URL of the OpenShift cluster"),
+    repository: str = Query(..., description="Name of the repository in Artifactory"),
+    image_name: str = Query(..., description="Name of the image to clean (e.g., my-image)"),
+    tag_name: Optional[str] = Query(None, description="Optional tag name/s to clean (e.g., tag1, tag2)"),
+    remove_older_than: int = Query(30, description="Remove images older than this many days"),
+    keep_tags: List[str] = Query([], description="List of tags to keep (e.g., latest, stable)"),
+    keep_most_recent: bool = Query(True, description="Keep the most recent image"),
+    filter_namespace: Optional[str] = Query(None, description="Namespace filter for OpenShift pods"),
+    delete_pod_statuses: Optional[List[str]] = Query(None, description="Delete pods based on status (e.g., CrashLoopBackOff, Completed)"),
+    selected_pods: Optional[List[str]] = Query(None, description="List of pod names selected for deletion")
+):
+    """
+    Deletes stale images from Artifactory and optionally deletes OpenShift pods based on their status.
+    """
+    
+    # Existing logic to delete stale images
+    # ... (your existing implementation for deleting images)
+    
+    if delete_pod_statuses:
+        # Get list of pods based on status
+        pods = list_openshift_pods(filter_namespace)
+        matching_pods = [pod for pod in pods if pod["status"] in delete_pod_statuses]
+        
+        if not matching_pods:
+            return {"message": "No pods found matching the given statuses"}
+        
+        # Return the list of matching pods for user selection
+        return {"message": "Select pods to delete", "matching_pods": matching_pods}
+    
+    if selected_pods:
+        deleted_pods = []
+        for pod in selected_pods:
+            delete_pod(pod, filter_namespace)
+            deleted_pods.append(pod)
+        return {"message": "Selected pods deleted", "deleted_pods": deleted_pods}
+    
+    return {"message": "Image deletion process completed"}
+
+def list_openshift_pods(namespace: Optional[str]):
+    """
+    Fetches a list of pods from the OpenShift cluster.
+    """
+    config.load_kube_config()
+    v1 = client.CoreV1Api()
+    pods = v1.list_namespaced_pod(namespace=namespace) if namespace else v1.list_pod_for_all_namespaces()
+    
+    pod_list = []
+    for pod in pods.items:
+        pod_list.append({
+            "name": pod.metadata.name,
+            "namespace": pod.metadata.namespace,
+            "status": pod.status.phase
+        })
+    return pod_list
+
+def delete_pod(pod_name: str, namespace: str):
+    """
+    Deletes a specific pod from OpenShift.
+    """
+    config.load_kube_config()
+    v1 = client.CoreV1Api()
+    try:
+        v1.delete_namespaced_pod(name=pod_name, namespace=namespace)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to delete pod {pod_name}: {str(e)}")
