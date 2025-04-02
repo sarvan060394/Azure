@@ -1,0 +1,63 @@
+from fastapi import FastAPI, Form, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+import os
+
+app = FastAPI()
+
+# Jinja2 template setup
+templates = Jinja2Templates(directory="templates")
+
+# Mock image data (would be fetched from Artifactory in a real scenario)
+images_data = {
+    "image1": "repo1/image1:latest",
+    "image2": "repo2/image2:v1.0",
+    "image3": "repo3/image3:v2.5"
+}
+
+
+@app.get("/images", response_class=HTMLResponse)
+async def list_images(request: Request):
+    """Display a list of images from Artifactory."""
+    return templates.TemplateResponse("images.html", {"request": request, "images": images_data})
+
+
+@app.post("/delete")
+async def delete_images(selected_images: list[str] = Form([])):
+    """Delete selected images from Artifactory (mock deletion)."""
+    global images_data
+    for image in selected_images:
+        images_data.pop(image, None)  # Simulate deletion
+
+    return RedirectResponse(url="/images", status_code=303)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+-------------------------------------------------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image List</title>
+</head>
+<body>
+    <h2>Available Images</h2>
+    <form action="/delete" method="post">
+        <ul>
+            {% for key, value in images.items() %}
+                <li>
+                    <input type="checkbox" name="selected_images" value="{{ key }}">
+                    {{ value }}
+                </li>
+            {% endfor %}
+        </ul>
+        <button type="submit">Delete Selected</button>
+    </form>
+</body>
+</html>
+
