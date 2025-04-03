@@ -1,0 +1,54 @@
+def is_non_prod_namespace(namespace: str) -> bool:
+    return "prod" not in namespace.lower()
+def list_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    dyn_client = DynamicClient(k8s_client)
+    pods = dyn_client.resources.get(api_version='v1', kind='Pod')
+
+    stale_pods = []
+
+    for ns in namespaces:
+        if not is_non_prod_namespace(ns):
+            logger.warning(f"Skipping namespace '{ns}' as it is considered prod.")
+            continue
+        try:
+            pod_list = pods.get(namespace=ns)
+            for pod in pod_list.items:
+                container_statuses = pod.status.containerStatuses or []
+                for cs in container_statuses:
+                    if cs.state.waiting and cs.state.waiting.reason in statuses:
+                        stale_pods.append({
+                            "namespace": ns,
+                            "name": pod.metadata.name,
+                            "status": cs.state.waiting.reason
+                        })
+        except Exception as e:
+            logger.error(f"Error retrieving pods from namespace {ns}: {e}")
+    return stale_pods
+def remove_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    stale_pods = list_stale_pods(k8s_client, namespaces, statuses)
+    dyn_client = DynamicClient(k8s_client)
+    deleted_pods = []
+
+    for pod in stale_pods:
+        try:
+            dyn_client.resources.get(api_version="v1", kind="Pod").delete(
+                namespace=pod["namespace"], name=pod["name"]
+            )
+            logger.info(f"Deleted pod {pod['name']} from namespace {pod['namespace']}")
+            deleted_pods.append(pod)
+        except Exception as e:
+            logger.error(f"Error removing pod {pod['name']}: {e}")
+
+    return {"deleted_pods": deleted_pods}
+from fastapi import Query
+from typing import Optional
+
+DEFAULT_NON_PROD_NAMESPACES = ["dev", "qa", "test", "sandbox"]
+
+@app.post("/delete-stale-pods")
+def delete_stale_pods_endpoint(
+    statuses: List[str] = Query(["CrashLoopBackOff", "Completed"]),
+    namespaces: Optional[List[str]] = Query(None)
+):
+    used_namespaces = namespaces if namespaces else DEFAULT_NON_PROD_NAMESPACES
+    return remove_stale_pods(k8s_client, used_namespaces, statuses)
