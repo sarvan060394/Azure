@@ -584,3 +584,34 @@ Currently, our setup relies on a common service ID for certificate issuance and 
 	3.	Use the Issuer in certificate requests via Cert Manager.
 
 As of now, the Venafi team is working on enabling certificate creation under the AIT-specific policy tree using their own service ID. Once this is available, we can proceed with configuring Cert Manager to request certificates under the correct policy tree using the newly created service ID.
+
+
+
+Subject: Enhancements and Next Steps for Image Pruner App
+
+Hi [Recipient’s Name],
+
+I wanted to share some planned enhancements and next steps for the Image Pruner application. Here’s what we are focusing on:
+	1.	Cross-Cluster and Namespace Synchronization
+	•	Ensure the Image Pruner pod can sync across different clusters and namespaces.
+	2.	Automated Stale Pod Cleanup
+	•	Implement automated jobs to remove stale pods in OpenShift based on their status.
+	3.	API Performance Optimization
+	•	Improve the API response time by redesigning it to handle parallel requests efficiently.
+	4.	Image Registry Data Extraction
+	•	Analyze and extract detailed metadata from the image registry, such as image size, language version, etc.
+	5.	Logging Enhancements
+	•	Redirect Image Pruner logs to Splunk for better monitoring and analysis.
+	6.	Authentication Optimization
+	•	Implement token caching to prevent repeated logins and improve efficiency.
+	7.	UI and API Improvements
+	•	Develop a UI or Swagger API where users can perform actions and generate reports for analysis.
+	8.	Exploring Knative Serving
+	•	Assess the flexibility and feasibility of using Knative Serving for this use case.
+
+Let me know if you have any thoughts or additional suggestions. Looking forward to your feedback.
+
+Best,
+[Your Name]
+[Your Role]
+[Your Contact Information]
