@@ -141,3 +141,81 @@ def is_non_prod_namespace(k8s_client, namespace: str) -> bool:
         logger.error(f"Error retrieving namespace metadata for {namespace}: {e}")
 
     return False
+
+
+--------------------*********************-----------------------------------
+
+
+def list_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    dyn_client = DynamicClient(k8s_client)
+    v1_pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+    stale_pods = {}
+
+    for ns in namespaces:
+        try:
+            pods = v1_pods.get(namespace=ns)
+        except Exception as e:
+            logger.error(f"Failed to fetch pods in namespace '{ns}': {str(e)}")
+            continue
+
+        for pod in pods.items:
+            pod_name = pod.metadata.name
+            pod_status = pod.status.phase
+            container_statuses = pod.status.containerStatuses or []
+            deletion_timestamp = pod.metadata.deletionTimestamp
+
+            is_crashloop = any(
+                cs.state.waiting and cs.state.waiting.reason == "CrashLoopBackOff"
+                for cs in container_statuses
+            )
+            is_error = any(
+                cs.state.waiting and cs.state.waiting.reason == "Error"
+                for cs in container_statuses
+            )
+            is_pending = pod_status == "Pending"
+            is_completed = pod_status == "Succeeded" and "Completed" in statuses
+            is_terminating = deletion_timestamp is not None
+
+            match = (
+                ("CrashLoopBackOff" in statuses and is_crashloop) or
+                ("Error" in statuses and is_error) or
+                ("Pending" in statuses and is_pending) or
+                ("Completed" in statuses and is_completed) or
+                ("Terminating" in statuses and is_terminating)
+            )
+
+            if match:
+                stale_pods.setdefault(ns, []).append(pod_name)
+                logger.info(f"Identified stale pod '{pod_name}' with status '{pod_status}' in namespace '{ns}'")
+
+    return stale_pods
+
+from pydantic import BaseModel
+from typing import List, Optional
+
+class DeletePodRequest(BaseModel):
+    openshift_cluster_url: str
+    username: str
+    password: str
+    namespaces: Optional[List[str]] = []  # default namespaces to search
+    statuses: List[str] = ["CrashLoopBackOff", "Completed"]  # default selected
+
+
+def validate_namespaces_are_nonprod(k8s_client, namespaces: List[str]) -> List[str]:
+    dyn_client = DynamicClient(k8s_client)
+    v1_projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project")
+    valid_namespaces = []
+
+    for ns in namespaces:
+        try:
+            project = v1_projects.get(name=ns)
+            labels = project.metadata.labels or {}
+            if labels.get("env_type") == "nonprod":
+                valid_namespaces.append(ns)
+            else:
+                logger.warning(f"Namespace '{ns}' is labeled as PROD or not labeled at all. Skipping.")
+        except Exception as e:
+            logger.error(f"Error validating namespace '{ns}': {str(e)}")
+
+    return valid_namespaces
+
