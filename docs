@@ -1,617 +1,120 @@
-h1. Managing Existing Venafi Certificates Using Cert Manager
+Image & Stale Resource Pruner
+Overview
+This Confluence page details the custom-built Image & Stale Resource Pruner application developed to manage and clean up unused container images in Artifactory and stale Kubernetes/OpenShift resources like pods, deployments, replica sets, and controllers.
 
-h2. Overview
-This document provides a step-by-step guide on how to manage an **already existing certificate** that was created in Venafi under a specific AIT policy tree using Cert Manager. This ensures seamless tracking, renewal, and usage of the certificate in Kubernetes.
+The pruner application exposes REST APIs with a FastAPI UI, allowing users to:
 
----
+List and selectively delete images from Artifactory, OpenShift, or both.
 
-h2. Steps to Manage Existing Certificate
+Identify and delete stale resources, particularly pods stuck in CrashLoopBackOff or Completed status, based on user input.
 
-h3. 1. Venafi Team Provides Client ID and Access Token
+Module: Stale Resource (Pod) Deletion API
+Functionality
+The stale resource pruner includes a powerful API to delete pods from OpenShift by status. This is not limited to a fixed list of statuses.
 
-* The Venafi team needs to create a **Client ID** in the **Trust Protection Platform (TPP)**.
-* They will provide the **Client ID** and **Access Token** required for authentication.
+Key Capabilities:
+Automatically detects all pod statuses (e.g., CrashLoopBackOff, Completed, Evicted, Error, Pending, Terminating, etc.)
 
----
+Displays a categorized list of pods grouped by status
 
-h3. 2. Create a Secret with the Access Token
+Enables users to:
 
-* Store the access token in a Kubernetes secret to be used by Cert Manager.
+Select specific pod statuses (e.g., only Evicted or Error)
 
-*Example Command:*
-```bash
-kubectl create secret generic venafi-auth-secret \
-  --from-literal=access-token=<VENAFI_ACCESS_TOKEN> \
-  -n cert-manager
-```
-This secret will be referenced in the ClusterIssuer resource.
-
----
-
-h3. 3. Create a Secret with the Generated Certificate
+Review matching pods
 
-* Retrieve the existing certificate and key from Venafi.
-* Create a Kubernetes Secret to store the certificate and key.
-
-*Example Command:*
-```bash
-kubectl create secret tls my-venafi-cert-secret \
-  --cert=/path/to/existing.crt \
-  --key=/path/to/existing.key \
-  -n my-namespace
-```
-This secret will be referenced in the Cert Manager **Certificate** object.
-
----
-
-h3. 4. Create a ClusterIssuer Resource
-
-* Define a **ClusterIssuer** to reference the Venafi authentication secret and specify the policy tree.
-
-*Example YAML:*
-```yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: venafi-cluster-issuer
-spec:
-  venafi:
-    zone: "AIT/Policy/Tree/Path"
-    tpp:
-      url: "https://venafi-tpp-url"
-      credentialsRef:
-        name: venafi-auth-secret
-```
-
----
-
-h3. 5. Create a Certificate Object with That Secret Name
-
-* Define a **Certificate** resource and reference the secret created above.
-* Specify the correct **ClusterIssuer** that uses Venafi.
-
-*Example YAML:*
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: my-venafi-cert
-  namespace: my-namespace
-spec:
-  secretName: my-venafi-cert-secret
-  issuerRef:
-    name: venafi-cluster-issuer
-    kind: ClusterIssuer
-  duration: 90d
-  renewBefore: 30d
-```
-
----
-
-h3. 6. Cert Manager Will Not Issue a Fresh Certificate If the Secret Exists
-
-* If the **secret already exists**, Cert Manager will not request a new certificate until renewal criteria are met.
-* To force a renewal, delete the secret manually:
-```bash
-kubectl delete secret my-venafi-cert-secret -n my-namespace
-```
-* Cert Manager will automatically request a new certificate upon secret deletion.
-
----
-
-h3. 7. Ensuring the Right Expiry in the Certificate Object
-
-* Use the `duration` field to define certificate validity (e.g., `90d`).
-* Set `renewBefore` to control when renewal begins (e.g., `30d` before expiry).
-
-**Monitoring Certificate Status:**
-```bash
-kubectl get certificate my-venafi-cert -n my-namespace
-```
-
-**Check Expiration and Renewal Details:**
-```bash
-kubectl describe certificate my-venafi-cert -n my-namespace
-```
-
----
-
-h2. Summary
-| **Step** | **Action** |
-|----------|-----------|
-| 1. Obtain Credentials | Venafi team provides Client ID and Access Token. |
-| 2. Create Access Token Secret | Store the access token in a Kubernetes secret. |
-| 3. Create Certificate Secret | Store the existing certificate and key in a Kubernetes secret. |
-| 4. Create ClusterIssuer | Reference the authentication secret and define the Venafi policy tree. |
-| 5. Create Certificate Object | Reference the secret and configure the Venafi issuer. |
-| 6. Renewal Logic | Cert Manager will not issue a new certificate if a valid secret exists. |
-| 7. Expiry Configuration | Use `duration` and `renewBefore` to ensure timely renewal. |
-
-By following these steps, you can effectively manage an **existing Venafi certificate** under the AIT policy tree, ensuring seamless integration with Cert Manager for tracking and renewal.
-
-Challenges and Limitations of Moving to Jenkins on Containers in OpenShift
-	1.	Load Handling & Cluster Design
-	•	Resource allocation must be carefully managed to prevent performance bottlenecks.
-	•	Scaling agents dynamically requires Kubernetes HPA tuning.
-	•	Persistent storage (RWX PV) is needed to retain Jenkins data.
-	•	Dedicated node pools may be necessary to isolate CI/CD workloads.
-	•	Large build processes might require external build services like Tekton.
-	2.	Cross-Cluster Communication Restrictions
-	•	Existing network policies block inter-cluster communication, requiring modifications.
-	•	NetworkPolicy and EgressNetworkPolicy need updates for external access.
-	•	Service Mesh (Istio) configurations may need adjustments to enable traffic between clusters.
-	•	OpenShift Federation or an API gateway might be required for multi-cluster setups.
-
-Additional Challenges and Limitations of Moving to Jenkins on Containers in OpenShift
-	3.	Persistent Storage and Workspace Management
-	•	Containers are ephemeral, and Jenkins workspaces must be stored on persistent volumes (RWX PV).
-	•	Frequent pod restarts can lead to workspace loss, affecting job continuity.
-	•	Shared storage may introduce I/O bottlenecks, slowing down builds.
-	4.	Networking and DNS Resolution Issues
-	•	Jenkins agents need dynamic DNS resolution, but container networking may cause connection failures.
-	•	Kubernetes service discovery might not work seamlessly with certain Jenkins plugins expecting static IPs.
-	•	Network latency could impact communication between Jenkins controller and agents.
-	5.	Plugin Compatibility and Legacy Jobs
-	•	Some Jenkins plugins expect a traditional file system and might not work efficiently in a containerized setup.
-	•	Legacy jobs using local disk paths for artifacts or dependencies need refactoring.
-	•	Custom-built plugins might require updates to work with Kubernetes environments.
-	6.	Build Performance and Resource Constraints
-	•	Containers impose CPU and memory limits, which might slow down resource-heavy builds.
-	•	Heavy disk I/O operations (e.g., large code repositories, multi-stage builds) may be slower in a shared storage setup.
-	•	Network file system (NFS) storage can introduce latency in concurrent builds.
-	7.	Jenkins Controller-Agents Communication
-	•	If Jenkins is behind an internal service in OpenShift, agents might struggle to register dynamically.
-	•	WebSocket-based communication for dynamic agents may need custom ingress and service configurations.
-	•	If agents are deployed in separate namespaces, NetworkPolicy adjustments are required.
-	8.	Security and Access Control
-	•	Role-Based Access Control (RBAC) needs to be configured correctly to prevent unauthorized access.
-	•	Service accounts and secrets must be managed securely in Kubernetes (e.g., using Vault or OpenShift Secrets).
-	•	Containerized Jenkins might expose logs and credentials if not secured properly.
-	9.	Migration and Configuration Management
-	•	Moving job configurations, credentials, and existing build history requires careful planning.
-	•	Jenkins Configuration as Code (JCasC) must be implemented for portability.
-	•	Credentials stored in Jenkins might need to be migrated to Kubernetes secrets.
-	10.	Cluster Dependency and Vendor Lock-in
-
-	•	OpenShift-specific configurations (e.g., Routes, SCCs) may make it harder to migrate Jenkins to another Kubernetes platform.
-	•	Relying on OpenShift’s built-in tools (e.g., Tekton, Service Mesh) could increase complexity and require additional expertise.
-
-Would you like detailed recommendations for overcoming these limitations?
-
-
-Would you like detailed YAML configurations for network policy adjustments?
-
-
-JIRA Comment:
-
-As per the current deployment strategy:
-	•	For lower lanes, we are using the native pipeline.
-	•	For higher lanes, we are using XLR for deployments.
-
-As part of the unified repo solution:
-	•	The client’s repository will contain only the necessary Jenkinsfile and manifest files.
-	•	The Kubes Kafka image will be published to a common/shared repository.
-	•	The client’s manifest will be configured to pull and run the Kubes image in their namespace using their service ID.
-	•	For higher lanes, deployment requests must be raised with a stable Kubes image, and the APSE team will handle the deployment process.
-
-
-
-
-h1. Managing Existing Venafi Certificates Using Cert Manager
-
-h2. Overview
-This document provides a step-by-step guide on how to manage an **already existing certificate** that was created in Venafi under a specific AIT policy tree using Cert Manager. This ensures seamless tracking, renewal, and usage of the certificate in Kubernetes.
-
----
-
-h2. Steps to Manage Existing Certificate
-
-h3. 1. Venafi Team Provides Client ID and Access Token
-
-* The Venafi team needs to create a **Client ID** in the **Trust Protection Platform (TPP)**.
-* They will provide the **Client ID** and **Access Token** required for authentication.
-
----
-
-h3. 2. Create a Secret with the Access Token
-
-* Store the access token in a Kubernetes secret to be used by Cert Manager.
-
-*Example Command:*
-```bash
-kubectl create secret generic venafi-auth-secret \
-  --from-literal=access-token=<VENAFI_ACCESS_TOKEN> \
-  -n cert-manager
-```
-This secret will be referenced in the ClusterIssuer resource.
-
----
-
-h3. 3. Create a Secret with the Generated Certificate
-
-* Retrieve the existing certificate and key from Venafi.
-* Create a Kubernetes Secret to store the certificate and key.
-
-*Example Command:*
-```bash
-kubectl create secret tls my-venafi-cert-secret \
-  --cert=/path/to/existing.crt \
-  --key=/path/to/existing.key \
-  -n my-namespace
-```
-This secret will be referenced in the Cert Manager **Certificate** object.
-
----
-
-h3. 4. Create a ClusterIssuer Resource
-
-* Define a **ClusterIssuer** to reference the Venafi authentication secret and specify the policy tree.
-
-*Example YAML:*
-```yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: venafi-cluster-issuer
-spec:
-  venafi:
-    zone: "AIT/Policy/Tree/Path"
-    tpp:
-      url: "https://venafi-tpp-url"
-      credentialsRef:
-        name: venafi-auth-secret
-```
-
----
-
-h3. 5. Create a Certificate Object with That Secret Name
-
-* Define a **Certificate** resource and reference the secret created above.
-* Specify the correct **ClusterIssuer** that uses Venafi.
-
-*Example YAML:*
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: my-venafi-cert
-  namespace: my-namespace
-spec:
-  secretName: my-venafi-cert-secret
-  issuerRef:
-    name: venafi-cluster-issuer
-    kind: ClusterIssuer
-  duration: 90d
-  renewBefore: 30d
-```
-
----
-
-h3. 6. Cert Manager Will Not Issue a Fresh Certificate If the Secret Exists
-
-* If the **secret already exists**, Cert Manager will not request a new certificate until renewal criteria are met.
-* To force a renewal, delete the secret manually:
-```bash
-kubectl delete secret my-venafi-cert-secret -n my-namespace
-```
-* Cert Manager will automatically request a new certificate upon secret deletion.
-
----
-
-h3. 7. Ensuring the Right Expiry in the Certificate Object
-
-* Use the `duration` field to define certificate validity (e.g., `90d`).
-* Set `renewBefore` to control when renewal begins (e.g., `30d` before expiry).
-
-**Monitoring Certificate Status:**
-```bash
-kubectl get certificate my-venafi-cert -n my-namespace
-```
-
-**Check Expiration and Renewal Details:**
-```bash
-kubectl describe certificate my-venafi-cert -n my-namespace
-```
-
----
-
-h2. Summary
-| **Step** | **Action** |
-|----------|-----------|
-| 1. Obtain Credentials | Venafi team provides Client ID and Access Token. |
-| 2. Create Access Token Secret | Store the access token in a Kubernetes secret. |
-| 3. Create Certificate Secret | Store the existing certificate and key in a Kubernetes secret. |
-| 4. Create ClusterIssuer | Reference the authentication secret and define the Venafi policy tree. |
-| 5. Create Certificate Object | Reference the secret and configure the Venafi issuer. |
-| 6. Renewal Logic | Cert Manager will not issue a new certificate if a valid secret exists. |
-| 7. Expiry Configuration | Use `duration` and `renewBefore` to ensure timely renewal. |
-
-By following these steps, you can effectively manage an **existing Venafi certificate** under the AIT policy tree, ensuring seamless integration with Cert Manager for tracking and renewal.
-
-Challenges and Limitations of Moving to Jenkins on Containers in OpenShift
-	1.	Load Handling & Cluster Design
-	•	Resource allocation must be carefully managed to prevent performance bottlenecks.
-	•	Scaling agents dynamically requires Kubernetes HPA tuning.
-	•	Persistent storage (RWX PV) is needed to retain Jenkins data.
-	•	Dedicated node pools may be necessary to isolate CI/CD workloads.
-	•	Large build processes might require external build services like Tekton.
-	2.	Cross-Cluster Communication Restrictions
-	•	Existing network policies block inter-cluster communication, requiring modifications.
-	•	NetworkPolicy and EgressNetworkPolicy need updates for external access.
-	•	Service Mesh (Istio) configurations may need adjustments to enable traffic between clusters.
-	•	OpenShift Federation or an API gateway might be required for multi-cluster setups.
-
-Additional Challenges and Limitations of Moving to Jenkins on Containers in OpenShift
-	3.	Persistent Storage and Workspace Management
-	•	Containers are ephemeral, and Jenkins workspaces must be stored on persistent volumes (RWX PV).
-	•	Frequent pod restarts can lead to workspace loss, affecting job continuity.
-	•	Shared storage may introduce I/O bottlenecks, slowing down builds.
-	4.	Networking and DNS Resolution Issues
-	•	Jenkins agents need dynamic DNS resolution, but container networking may cause connection failures.
-	•	Kubernetes service discovery might not work seamlessly with certain Jenkins plugins expecting static IPs.
-	•	Network latency could impact communication between Jenkins controller and agents.
-	5.	Plugin Compatibility and Legacy Jobs
-	•	Some Jenkins plugins expect a traditional file system and might not work efficiently in a containerized setup.
-	•	Legacy jobs using local disk paths for artifacts or dependencies need refactoring.
-	•	Custom-built plugins might require updates to work with Kubernetes environments.
-	6.	Build Performance and Resource Constraints
-	•	Containers impose CPU and memory limits, which might slow down resource-heavy builds.
-	•	Heavy disk I/O operations (e.g., large code repositories, multi-stage builds) may be slower in a shared storage setup.
-	•	Network file system (NFS) storage can introduce latency in concurrent builds.
-	7.	Jenkins Controller-Agents Communication
-	•	If Jenkins is behind an internal service in OpenShift, agents might struggle to register dynamically.
-	•	WebSocket-based communication for dynamic agents may need custom ingress and service configurations.
-	•	If agents are deployed in separate namespaces, NetworkPolicy adjustments are required.
-	8.	Security and Access Control
-	•	Role-Based Access Control (RBAC) needs to be configured correctly to prevent unauthorized access.
-	•	Service accounts and secrets must be managed securely in Kubernetes (e.g., using Vault or OpenShift Secrets).
-	•	Containerized Jenkins might expose logs and credentials if not secured properly.
-	9.	Migration and Configuration Management
-	•	Moving job configurations, credentials, and existing build history requires careful planning.
-	•	Jenkins Configuration as Code (JCasC) must be implemented for portability.
-	•	Credentials stored in Jenkins might need to be migrated to Kubernetes secrets.
-	10.	Cluster Dependency and Vendor Lock-in
-
-	•	OpenShift-specific configurations (e.g., Routes, SCCs) may make it harder to migrate Jenkins to another Kubernetes platform.
-	•	Relying on OpenShift’s built-in tools (e.g., Tekton, Service Mesh) could increase complexity and require additional expertise.
-
-Would you like detailed recommendations for overcoming these limitations?
-
-
-Would you like detailed YAML configurations for network policy adjustments?
-
-
-JIRA Comment:
-
-As per the current deployment strategy:
-	•	For lower lanes, we are using the native pipeline.
-	•	For higher lanes, we are using XLR for deployments.
-
-As part of the unified repo solution:
-	•	The client’s repository will contain only the necessary Jenkinsfile and manifest files.
-	•	The Kubes Kafka image will be published to a common/shared repository.
-	•	The client’s manifest will be configured to pull and run the Kubes image in their namespace using their service ID.
-	•	For higher lanes, deployment requests must be raised with a stable Kubes image, and the APSE team will handle the deployment process.
-h1. Managing Existing Venafi Certificates Using Cert Manager
-
-h2. Overview
-This document provides a step-by-step guide on how to manage an **already existing certificate** that was created in Venafi under a specific AIT policy tree using Cert Manager. This ensures seamless tracking, renewal, and usage of the certificate in Kubernetes.
-
----
-
-h2. Steps to Manage Existing Certificate
-
-h3. 1. Venafi Team Provides Client ID and Access Token
-
-* The Venafi team needs to create a **Client ID** in the **Trust Protection Platform (TPP)**.
-* They will provide the **Client ID** and **Access Token** required for authentication.
-
----
-
-h3. 2. Create a Secret with the Access Token
-
-* Store the access token in a Kubernetes secret to be used by Cert Manager.
-
-*Example Command:*
-```bash
-kubectl create secret generic venafi-auth-secret \
-  --from-literal=access-token=<VENAFI_ACCESS_TOKEN> \
-  -n cert-manager
-```
-This secret will be referenced in the ClusterIssuer resource.
-
----
-
-h3. 3. Create a Secret with the Generated Certificate
-
-* Retrieve the existing certificate and key from Venafi.
-* Create a Kubernetes Secret to store the certificate and key.
-
-*Example Command:*
-```bash
-kubectl create secret tls my-venafi-cert-secret \
-  --cert=/path/to/existing.crt \
-  --key=/path/to/existing.key \
-  -n my-namespace
-```
-This secret will be referenced in the Cert Manager **Certificate** object.
-
----
-
-h3. 4. Create a ClusterIssuer Resource
-
-* Define a **ClusterIssuer** to reference the Venafi authentication secret and specify the policy tree.
-
-*Example YAML:*
-```yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: venafi-cluster-issuer
-spec:
-  venafi:
-    zone: "AIT/Policy/Tree/Path"
-    tpp:
-      url: "https://venafi-tpp-url"
-      credentialsRef:
-        name: venafi-auth-secret
-```
-
----
-
-h3. 5. Create a Certificate Object with That Secret Name
-
-* Define a **Certificate** resource and reference the secret created above.
-* Specify the correct **ClusterIssuer** that uses Venafi.
-
-*Example YAML:*
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: my-venafi-cert
-  namespace: my-namespace
-spec:
-  secretName: my-venafi-cert-secret
-  issuerRef:
-    name: venafi-cluster-issuer
-    kind: ClusterIssuer
-  duration: 90d
-  renewBefore: 30d
-```
-
----
-
-h3. 6. Cert Manager Will Not Issue a Fresh Certificate If the Secret Exists
-
-* If the **secret already exists**, Cert Manager will not request a new certificate until renewal criteria are met.
-* To force a renewal, delete the secret manually:
-```bash
-kubectl delete secret my-venafi-cert-secret -n my-namespace
-```
-* Cert Manager will automatically request a new certificate upon secret deletion.
-
----
-
-h3. 7. Ensuring the Right Expiry in the Certificate Object
-
-* Use the `duration` field to define certificate validity (e.g., `90d`).
-* Set `renewBefore` to control when renewal begins (e.g., `30d` before expiry).
-
-**Monitoring Certificate Status:**
-```bash
-kubectl get certificate my-venafi-cert -n my-namespace
-```
-
-**Check Expiration and Renewal Details:**
-```bash
-kubectl describe certificate my-venafi-cert -n my-namespace
-```
-
----
-
-h2. Summary
-| **Step** | **Action** |
-|----------|-----------|
-| 1. Obtain Credentials | Venafi team provides Client ID and Access Token. |
-| 2. Create Access Token Secret | Store the access token in a Kubernetes secret. |
-| 3. Create Certificate Secret | Store the existing certificate and key in a Kubernetes secret. |
-| 4. Create ClusterIssuer | Reference the authentication secret and define the Venafi policy tree. |
-| 5. Create Certificate Object | Reference the secret and configure the Venafi issuer. |
-| 6. Renewal Logic | Cert Manager will not issue a new certificate if a valid secret exists. |
-| 7. Expiry Configuration | Use `duration` and `renewBefore` to ensure timely renewal. |
-
-By following these steps, you can effectively manage an **existing Venafi certificate** under the AIT policy tree, ensuring seamless integration with Cert Manager for tracking and renewal.
-
-Challenges and Limitations of Moving to Jenkins on Containers in OpenShift
-	1.	Load Handling & Cluster Design
-	•	Resource allocation must be carefully managed to prevent performance bottlenecks.
-	•	Scaling agents dynamically requires Kubernetes HPA tuning.
-	•	Persistent storage (RWX PV) is needed to retain Jenkins data.
-	•	Dedicated node pools may be necessary to isolate CI/CD workloads.
-	•	Large build processes might require external build services like Tekton.
-	2.	Cross-Cluster Communication Restrictions
-	•	Existing network policies block inter-cluster communication, requiring modifications.
-	•	NetworkPolicy and EgressNetworkPolicy need updates for external access.
-	•	Service Mesh (Istio) configurations may need adjustments to enable traffic between clusters.
-	•	OpenShift Federation or an API gateway might be required for multi-cluster setups.
-
-Additional Challenges and Limitations of Moving to Jenkins on Containers in OpenShift
-	3.	Persistent Storage and Workspace Management
-	•	Containers are ephemeral, and Jenkins workspaces must be stored on persistent volumes (RWX PV).
-	•	Frequent pod restarts can lead to workspace loss, affecting job continuity.
-	•	Shared storage may introduce I/O bottlenecks, slowing down builds.
-	4.	Networking and DNS Resolution Issues
-	•	Jenkins agents need dynamic DNS resolution, but container networking may cause connection failures.
-	•	Kubernetes service discovery might not work seamlessly with certain Jenkins plugins expecting static IPs.
-	•	Network latency could impact communication between Jenkins controller and agents.
-	5.	Plugin Compatibility and Legacy Jobs
-	•	Some Jenkins plugins expect a traditional file system and might not work efficiently in a containerized setup.
-	•	Legacy jobs using local disk paths for artifacts or dependencies need refactoring.
-	•	Custom-built plugins might require updates to work with Kubernetes environments.
-	6.	Build Performance and Resource Constraints
-	•	Containers impose CPU and memory limits, which might slow down resource-heavy builds.
-	•	Heavy disk I/O operations (e.g., large code repositories, multi-stage builds) may be slower in a shared storage setup.
-	•	Network file system (NFS) storage can introduce latency in concurrent builds.
-	7.	Jenkins Controller-Agents Communication
-	•	If Jenkins is behind an internal service in OpenShift, agents might struggle to register dynamically.
-	•	WebSocket-based communication for dynamic agents may need custom ingress and service configurations.
-	•	If agents are deployed in separate namespaces, NetworkPolicy adjustments are required.
-	8.	Security and Access Control
-	•	Role-Based Access Control (RBAC) needs to be configured correctly to prevent unauthorized access.
-	•	Service accounts and secrets must be managed securely in Kubernetes (e.g., using Vault or OpenShift Secrets).
-	•	Containerized Jenkins might expose logs and credentials if not secured properly.
-	9.	Migration and Configuration Management
-	•	Moving job configurations, credentials, and existing build history requires careful planning.
-	•	Jenkins Configuration as Code (JCasC) must be implemented for portability.
-	•	Credentials stored in Jenkins might need to be migrated to Kubernetes secrets.
-	10.	Cluster Dependency and Vendor Lock-in
-
-	•	OpenShift-specific configurations (e.g., Routes, SCCs) may make it harder to migrate Jenkins to another Kubernetes platform.
-	•	Relying on OpenShift’s built-in tools (e.g., Tekton, Service Mesh) could increase complexity and require additional expertise.
-
-Would you like detailed recommendations for overcoming these limitations?
-
-
-Would you like detailed YAML configurations for network policy adjustments?
-
-
-
-
-Currently, our setup relies on a common service ID for certificate issuance and uploads the certificate to the Cert Manager policy tree in Venafi. However, the requirement is to:
-	1.	Create a dedicated service ID and grant it access to the AIT-specific policy tree.
-	2.	Create an Issuer or ClusterIssuer using this service ID and AIT-specific policy tree.
-	3.	Use the Issuer in certificate requests via Cert Manager.
-
-As of now, the Venafi team is working on enabling certificate creation under the AIT-specific policy tree using their own service ID. Once this is available, we can proceed with configuring Cert Manager to request certificates under the correct policy tree using the newly created service ID.
-
-
-
-Subject: Enhancements and Next Steps for Image Pruner App
-
-Hi [Recipient’s Name],
-
-I wanted to share some planned enhancements and next steps for the Image Pruner application. Here’s what we are focusing on:
-	1.	Cross-Cluster and Namespace Synchronization
-	•	Ensure the Image Pruner pod can sync across different clusters and namespaces.
-	2.	Automated Stale Pod Cleanup
-	•	Implement automated jobs to remove stale pods in OpenShift based on their status.
-	3.	API Performance Optimization
-	•	Improve the API response time by redesigning it to handle parallel requests efficiently.
-	4.	Image Registry Data Extraction
-	•	Analyze and extract detailed metadata from the image registry, such as image size, language version, etc.
-	5.	Logging Enhancements
-	•	Redirect Image Pruner logs to Splunk for better monitoring and analysis.
-	6.	Authentication Optimization
-	•	Implement token caching to prevent repeated logins and improve efficiency.
-	7.	UI and API Improvements
-	•	Develop a UI or Swagger API where users can perform actions and generate reports for analysis.
-	8.	Exploring Knative Serving
-	•	Assess the flexibility and feasibility of using Knative Serving for this use case.
-
-Let me know if you have any thoughts or additional suggestions. Looking forward to your feedback.
-
-Best,
-[Your Name]
-[Your Role]
-[Your Contact Information]
+Delete selected pods from OpenShift
+
+Example Pod Statuses Supported
+Pod Status	Description
+Running	Actively running pods (not typically deleted)
+Completed	Successfully completed jobs (safe to delete)
+CrashLoopBackOff	Crashing repeatedly and restarting
+Error	Pods that failed permanently
+Evicted	Removed by Kubelet due to resource pressure
+Pending	Scheduled but not yet running (e.g., resource constraints)
+Terminating	Stuck or slow termination
+Users have full control to filter and choose which pod statuses to delete.
+
+Key Challenges & Edge Cases
+1. Pods Recreated After Deletion
+Even after stale pods are deleted by the API, some are immediately recreated due to ownership relationships:
+
+Case A: Pods Owned by ReplicaSet or ReplicationController
+Deleting the pod alone is not sufficient.
+
+ReplicaSets/RCs will automatically reschedule and recreate the pods to maintain desired replica count.
+
+Resolution:
+
+The API includes an option to identify and delete the owning ReplicaSet or RC along with the pods.
+
+Case B: ReplicaSet/RC Owned by DeploymentConfig (DC)
+If the owner of the ReplicaSet or RC is a DC, the system will regenerate the ReplicaSet and, in turn, the pod.
+
+Resolution:
+
+The deletion logic traces the ownership tree:
+
+Pod → RS/RC → DeploymentConfig
+
+It prompts the user (in UI or via dry-run) that to stop complete regeneration, the entire tree needs to be deleted, starting from the DC.
+
+Ownership Tracing Hierarchy
+plaintext
+Copy
+Edit
+Pod
+└── ReplicaSet or ReplicationController
+    └── DeploymentConfig (if applicable)
+Ownership metadata is retrieved using metadata.ownerReferences.
+
+Risk Mitigation and Environment Segregation
+Environment Filtering
+To ensure production environments remain untouched, a filtering mechanism is applied:
+
+Resources are only considered if they are tagged with env_type: non-prod.
+
+Known Limitation
+All environments except production are currently tagged as non-prod.
+
+This makes it difficult to differentiate between Dev, QA, UAT, SIT, etc.
+
+Risk Implications:
+A generic cleanup in non-prod environments might unintentionally affect critical testing workloads.
+
+For example, QA or UAT environments, which are typically more stable and require persistence, might be impacted.
+
+Recommendations & Next Steps
+Short-Term Improvements
+Enhance API to visualize ownership chains so users understand what will get recreated post-deletion.
+
+Add a confirmation prompt before deleting owners like DC/RC/RS.
+
+Mid-Term Strategy
+Improve environment tagging:
+
+Tag projects more granularly with env_type: dev, env_type: qa, env_type: uat, etc.
+
+Introduce namespace-specific filters in the UI and API to allow selective targeting.
+
+Long-Term Enhancements
+Integrate with GitOps or config management tools to:
+
+Reconcile deleted DCs automatically (if needed).
+
+Ensure audit logs and traceability.
+
+Sample Workflow Diagram
+plaintext
+Copy
+Edit
+User selects pods to delete based on status
+        │
+        ├── Check if Pod has ownerReferences
+        │     └── If ReplicaSet/RC found
+        │             └── Check if RS/RC is owned by DeploymentConfig
+        │                     └── Prompt user to confirm deletion of higher-level owner
+        └── Delete the pod(s) and selected owners
+Conclusion
+The stale resource pruner provides a powerful, controlled interface to clean up unused workloads in OpenShift. However, due to the complexity of resource ownership and tagging limitations in non-prod environments, caution is essential to prevent unintended deletions. Future enhancements aim to provide better visibility, control, and granularity in targeting stale resources.
