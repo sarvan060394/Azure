@@ -908,3 +908,220 @@ def remove_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
             logger.error(f"Error removing pod {pod['name']}: {e}")
 
     return {"deleted_pods": deleted_pods}
+
+-----::::::dc RC delete logic:::-----
+
+
+from fastapi import FastAPI, Query, HTTPException
+from typing import List, Optional
+from kubernetes import client, config
+from openshift.dynamic import DynamicClient
+import logging
+
+app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# Utility: OpenShift client
+def get_openshift_client(cluster_url: str, username: str, password: str):
+    config.load_kube_config()  # Replace with your auth logic
+    return client.ApiClient()
+
+
+# Utility: Check non-prod namespace
+def is_non_prod_namespace(k8s_client, namespace: str) -> bool:
+    dyn_client = DynamicClient(k8s_client)
+    projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project")
+    try:
+        project = projects.get(name=namespace)
+        env_type = project.metadata.labels.get("env_type", "").lower()
+        return env_type == "nonprod"
+    except Exception as e:
+        logger.error(f"Error checking non-prod label for namespace {namespace}: {e}")
+        return False
+
+
+# GET: List stale pods
+def list_stale_pods(k8s_client, dyn_client, namespaces: List[str], statuses: List[str]):
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+    stale_pods = []
+
+    for ns in namespaces:
+        if not is_non_prod_namespace(k8s_client, ns):
+            continue
+        try:
+            pod_list = pods.get(namespace=ns)
+            for pod in pod_list.items:
+                container_statuses = pod.status.containerStatuses or []
+                for cs in container_statuses:
+                    if cs.state and cs.state.waiting and cs.state.waiting.reason in statuses:
+                        stale_pods.append({
+                            "namespace": ns,
+                            "name": pod.metadata.name,
+                            "status": cs.state.waiting.reason
+                        })
+        except Exception as e:
+            logger.error(f"Error listing pods in {ns}: {e}")
+    return stale_pods
+
+
+# Main API
+@app.post("/delete-stale-pods")
+def delete_stale_pods_endpoint(
+    openshift_cluster_url: str,
+    username: str,
+    password: str,
+    statuses: List[str] = Query(["CrashLoopBackOff", "ImagePullBackOff", "Completed"]),
+    namespaces: Optional[List[str]] = Query(None)
+):
+    try:
+        k8s_client = get_openshift_client(openshift_cluster_url, username, password)
+        dyn_client = DynamicClient(k8s_client)
+
+        if namespaces is None:
+            projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project").get()
+            namespaces = [
+                project.metadata.name
+                for project in projects.items
+                if is_non_prod_namespace(k8s_client, project.metadata.name)
+            ]
+
+        stale_pods = list_stale_pods(k8s_client, dyn_client, namespaces, statuses)
+        result = remove_stale_pods(k8s_client, dyn_client, stale_pods)
+        return {"deleted": result}
+
+    except Exception as e:
+        logger.exception("Failed to delete stale pods")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+# Remove stale pods logic
+def remove_stale_pods(k8s_client, dyn_client, stale_pods: List[dict]):
+    deleted = []
+    pods_resource = dyn_client.resources.get(api_version="v1", kind="Pod")
+
+    for pod_info in stale_pods:
+        ns = pod_info["namespace"]
+        pod_name = pod_info["name"]
+
+        try:
+            pod = pods_resource.get(name=pod_name, namespace=ns)
+            owner = get_owner(pod)
+
+            if not owner:
+                pods_resource.delete(name=pod_name, namespace=ns)
+                logger.info(f"Deleted standalone pod: {pod_name} in {ns}")
+                deleted.append({"namespace": ns, "pod": pod_name})
+                continue
+
+            owner_kind = owner["kind"]
+            owner_name = owner["name"]
+
+            if owner_kind == "ReplicaSet":
+                deleted += handle_replica_set(dyn_client, ns, pod_name, owner_name)
+            elif owner_kind == "ReplicationController":
+                deleted += handle_replication_controller(dyn_client, ns, pod_name, owner_name)
+            else:
+                logger.info(f"Pod {pod_name} owner {owner_kind} not handled, deleting pod only.")
+                pods_resource.delete(name=pod_name, namespace=ns)
+                deleted.append({"namespace": ns, "pod": pod_name})
+
+        except Exception as e:
+            logger.error(f"Error deleting pod {pod_name} in {ns}: {e}")
+    return deleted
+
+
+# Helpers
+def get_owner(obj):
+    if obj.metadata.ownerReferences:
+        return obj.metadata.ownerReferences[0].to_dict()
+    return None
+
+
+def handle_replica_set(dyn_client, namespace, pod_name, rs_name):
+    deleted = []
+    rs_resource = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    pods_resource = dyn_client.resources.get(api_version="v1", kind="Pod")
+
+    pods_resource.delete(namespace=namespace, name=pod_name)
+    deleted.append({"namespace": namespace, "pod": pod_name})
+    logger.info(f"Deleted pod: {pod_name} in {namespace}")
+
+    rs = rs_resource.get(name=rs_name, namespace=namespace)
+    rs_owner = get_owner(rs)
+
+    if rs_owner and rs_owner["kind"] == "Deployment":
+        deployment_name = rs_owner["name"]
+        if has_other_running_pods(dyn_client, namespace, deployment_name, "Deployment"):
+            rs_resource.delete(name=rs_name, namespace=namespace)
+            deleted.append({"namespace": namespace, "replica_set": rs_name})
+            logger.info(f"Deleted ReplicaSet {rs_name} (Deployment has other running pods)")
+        else:
+            deployment_resource = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+            deployment_resource.delete(name=deployment_name, namespace=namespace)
+            rs_resource.delete(name=rs_name, namespace=namespace)
+            deleted.append({
+                "namespace": namespace,
+                "deployment": deployment_name,
+                "replica_set": rs_name
+            })
+            logger.info(f"Deleted Deployment {deployment_name} and ReplicaSet {rs_name}")
+    else:
+        rs_resource.delete(name=rs_name, namespace=namespace)
+        deleted.append({"namespace": namespace, "replica_set": rs_name})
+        logger.info(f"Deleted ReplicaSet {rs_name}")
+    return deleted
+
+
+def handle_replication_controller(dyn_client, namespace, pod_name, rc_name):
+    deleted = []
+    rc_resource = dyn_client.resources.get(api_version="v1", kind="ReplicationController")
+    pods_resource = dyn_client.resources.get(api_version="v1", kind="Pod")
+
+    pods_resource.delete(namespace=namespace, name=pod_name)
+    deleted.append({"namespace": namespace, "pod": pod_name})
+    logger.info(f"Deleted pod: {pod_name} in {namespace}")
+
+    rc = rc_resource.get(name=rc_name, namespace=namespace)
+    rc_owner = get_owner(rc)
+
+    if rc_owner and rc_owner["kind"] == "DeploymentConfig":
+        dc_name = rc_owner["name"]
+        if has_other_running_pods(dyn_client, namespace, dc_name, "DeploymentConfig"):
+            rc_resource.delete(name=rc_name, namespace=namespace)
+            deleted.append({"namespace": namespace, "replication_controller": rc_name})
+            logger.info(f"Deleted ReplicationController {rc_name} (DC has other running pods)")
+        else:
+            dc_resource = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+            dc_resource.delete(name=dc_name, namespace=namespace)
+            rc_resource.delete(name=rc_name, namespace=namespace)
+            deleted.append({
+                "namespace": namespace,
+                "deployment_config": dc_name,
+                "replication_controller": rc_name
+            })
+            logger.info(f"Deleted DeploymentConfig {dc_name} and RC {rc_name}")
+    else:
+        rc_resource.delete(name=rc_name, namespace=namespace)
+        deleted.append({"namespace": namespace, "replication_controller": rc_name})
+        logger.info(f"Deleted ReplicationController {rc_name}")
+    return deleted
+
+
+def has_other_running_pods(dyn_client, namespace, parent_name, parent_kind):
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod").get(namespace=namespace).items
+    for pod in pods:
+        if pod.status.phase != "Running":
+            continue
+        if pod.metadata.ownerReferences:
+            for owner in pod.metadata.ownerReferences:
+                if owner.kind == "ReplicaSet" and parent_kind == "Deployment":
+                    rs = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet").get(name=owner.name, namespace=namespace)
+                    if rs.metadata.ownerReferences and rs.metadata.ownerReferences[0].name == parent_name:
+                        return True
+                elif owner.kind == "ReplicationController" and parent_kind == "DeploymentConfig":
+                    rc = dyn_client.resources.get(api_version="v1", kind="ReplicationController").get(name=owner.name, namespace=namespace)
+                    if rc.metadata.ownerReferences and rc.metadata.ownerReferences[0].name == parent_name:
+                        return True
+    return False
