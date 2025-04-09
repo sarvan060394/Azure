@@ -710,3 +710,201 @@ def list_stale_images(k8s_client, image_pull_threshold: int = 30):
         logger.error(f"Error listing stale images: {e}")
 
     return stale_images
+
+
+----&&&------deletion logic for dc & RC-----
+
+import logging
+from typing import List, Optional
+from fastapi import Query
+from openshift.dynamic import DynamicClient
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Function to get associated ReplicaSet for a pod
+def get_associated_replicaset(k8s_client, namespace: str, pod_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    replicasets = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    replicaset_list = replicasets.get(namespace=namespace)
+    
+    for rs in replicaset_list.items:
+        for pod in rs.spec.template.spec.containers:
+            if pod.name == pod_name:
+                logger.info(f"ReplicaSet {rs.metadata.name} is associated with pod {pod_name}.")
+                return rs.metadata.name
+    return None
+
+# Function to delete associated ReplicaSet
+def delete_associated_replicaset(k8s_client, namespace: str, replicaset_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet").delete(
+            namespace=namespace, name=replicaset_name
+        )
+        logger.info(f"Deleted ReplicaSet {replicaset_name} from namespace {namespace}.")
+    except Exception as e:
+        logger.error(f"Error deleting ReplicaSet {replicaset_name}: {e}")
+
+# Function to get associated ReplicaController for a pod
+def get_associated_replicacontroller(k8s_client, namespace: str, pod_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    replica_controllers = dyn_client.resources.get(api_version="v1", kind="ReplicationController")
+    rc_list = replica_controllers.get(namespace=namespace)
+    
+    for rc in rc_list.items:
+        for pod in rc.spec.template.spec.containers:
+            if pod.name == pod_name:
+                logger.info(f"ReplicationController {rc.metadata.name} is associated with pod {pod_name}.")
+                return rc.metadata.name
+    return None
+
+# Function to delete associated ReplicaController
+def delete_associated_replicacontroller(k8s_client, namespace: str, replicacontroller_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        dyn_client.resources.get(api_version="v1", kind="ReplicationController").delete(
+            namespace=namespace, name=replicacontroller_name
+        )
+        logger.info(f"Deleted ReplicationController {replicacontroller_name} from namespace {namespace}.")
+    except Exception as e:
+        logger.error(f"Error deleting ReplicationController {replicacontroller_name}: {e}")
+
+# Function to get associated DeploymentConfig for a pod
+def get_associated_deploymentconfig(k8s_client, namespace: str, pod_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    dc = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+    dc_list = dc.get(namespace=namespace)
+    
+    for deployment_config in dc_list.items:
+        for pod in deployment_config.spec.template.spec.containers:
+            if pod.name == pod_name:
+                logger.info(f"DeploymentConfig {deployment_config.metadata.name} is associated with pod {pod_name}.")
+                return deployment_config.metadata.name
+    return None
+
+# Function to delete associated DeploymentConfig
+def delete_associated_deploymentconfig(k8s_client, namespace: str, deploymentconfig_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig").delete(
+            namespace=namespace, name=deploymentconfig_name
+        )
+        logger.info(f"Deleted DeploymentConfig {deploymentconfig_name} from namespace {namespace}.")
+    except Exception as e:
+        logger.error(f"Error deleting DeploymentConfig {deploymentconfig_name}: {e}")
+
+# Function to get associated Deployment for a pod
+def get_associated_deployment(k8s_client, namespace: str, pod_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    deployments = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+    deployment_list = deployments.get(namespace=namespace)
+    
+    for deployment in deployment_list.items:
+        for rs in deployment.spec.template.spec.containers:
+            if rs.name == get_associated_replicaset(k8s_client, namespace, pod_name):
+                logger.info(f"Deployment {deployment.metadata.name} is associated with pod {pod_name}.")
+                return deployment.metadata.name
+    return None
+
+# Function to delete associated Deployment
+def delete_associated_deployment(k8s_client, namespace: str, deployment_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        dyn_client.resources.get(api_version="apps/v1", kind="Deployment").delete(
+            namespace=namespace, name=deployment_name
+        )
+        logger.info(f"Deleted Deployment {deployment_name} from namespace {namespace}.")
+    except Exception as e:
+        logger.error(f"Error deleting Deployment {deployment_name}: {e}")
+
+# Function to list stale pods based on selected statuses
+def list_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    dyn_client = DynamicClient(k8s_client)
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+
+    stale_pods = []
+
+    for ns in namespaces:
+        if not is_non_prod_namespace(k8s_client, ns):
+            continue  # Skip prod namespaces
+        
+        try:
+            pod_list = pods.get(namespace=ns)
+            for pod in pod_list.items:
+                container_statuses = pod.status.containerStatuses or []
+                for cs in container_statuses:
+                    if cs.state.waiting and cs.state.waiting.reason in statuses:
+                        stale_pods.append({
+                            "namespace": ns,
+                            "name": pod.metadata.name,
+                            "status": cs.state.waiting.reason
+                        })
+        except Exception as e:
+            logger.error(f"Error retrieving pods from namespace {ns}: {e}")
+    
+    return stale_pods
+
+# Function to check if the namespace is non-prod
+def is_non_prod_namespace(k8s_client, namespace: str) -> bool:
+    """
+    Checks if a namespace is labeled as non-prod in OpenShift.
+    """
+    dyn_client = DynamicClient(k8s_client)
+    projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project")
+
+    try:
+        project = projects.get(name=namespace)
+        env_type = project.metadata.labels.get("env_type", "").lower()
+        if env_type == "nonprod":
+            return True
+        logger.warning(f"Namespace {namespace} is labeled as '{env_type}', skipping deletion.")
+    except Exception as e:
+        logger.error(f"Error retrieving namespace metadata for {namespace}: {e}")
+
+    return False
+
+# Main function to remove stale pods and associated resources
+def remove_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    stale_pods = list_stale_pods(k8s_client, namespaces, statuses)
+    dyn_client = DynamicClient(k8s_client)
+    deleted_pods = []
+
+    for pod in stale_pods:
+        try:
+            logger.info(f"Attempting to delete pod {pod['name']} from namespace {pod['namespace']}.")
+            # Remove the pod
+            dyn_client.resources.get(api_version="v1", kind="Pod").delete(
+                namespace=pod["namespace"], name=pod["name"]
+            )
+            logger.info(f"Deleted pod {pod['name']} from namespace {pod['namespace']}.")
+            deleted_pods.append(pod)
+
+            # Check if the pod is associated with a ReplicaSet or ReplicaController
+            associated_rs = get_associated_replicaset(k8s_client, pod["namespace"], pod["name"])
+            if associated_rs:
+                logger.info(f"Pod {pod['name']} is associated with ReplicaSet {associated_rs}.")
+                delete_associated_replicaset(k8s_client, pod["namespace"], associated_rs)
+            
+            associated_rc = get_associated_replicacontroller(k8s_client, pod["namespace"], pod["name"])
+            if associated_rc:
+                logger.info(f"Pod {pod['name']} is associated with ReplicaController {associated_rc}.")
+                delete_associated_replicacontroller(k8s_client, pod["namespace"], associated_rc)
+                
+            # Check if the pod is associated with a Deployment or DeploymentConfig
+            associated_dc = get_associated_deploymentconfig(k8s_client, pod["namespace"], pod["name"])
+            if associated_dc:
+                logger.info(f"Pod {pod['name']} is associated with DeploymentConfig {associated_dc}.")
+                delete_associated_deploymentconfig(k8s_client, pod["namespace"], associated_dc)
+
+            # Check if the pod is associated with a Deployment
+            associated_deployment = get_associated_deployment(k8s_client, pod["namespace"], pod["name"])
+            if associated_deployment:
+                logger.info(f"Pod {pod['name']} is associated with Deployment {associated_deployment}.")
+                delete_associated_deployment(k8s_client, pod["namespace"], associated_deployment)
+
+        except Exception as e:
+            logger.error(f"Error removing pod {pod['name']}: {e}")
+
+    return {"deleted_pods": deleted_pods}
