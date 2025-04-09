@@ -472,3 +472,57 @@ def is_non_prod_namespace(k8s_client, namespace: str) -> bool:
         logger.error(f"Error retrieving namespace metadata for {namespace}: {e}")
 
     return False
+
+
+from fastapi import FastAPI, Query, HTTPException, Form
+from typing import List, Optional
+
+@app.post("/delete-stale-pods")
+def delete_stale_pods_endpoint(
+    openshift_cluster_url: str = Form(..., description="The URL of the OpenShift cluster."),
+    username: str = Form(..., description="The username to authenticate with OpenShift."),
+    password: str = Form(..., description="The password to authenticate with OpenShift."),
+    statuses: List[str] = Query(
+        ["CrashLoopBackOff", "Completed"],
+        description="The statuses of the pods to consider for deletion. You can select multiple statuses.",
+        example=["CrashLoopBackOff", "Completed"]
+    ),
+    namespaces: Optional[List[str]] = Query(
+        None,
+        description="The namespaces to check for stale pods. You can select multiple namespaces. If not provided, it will default to non-prod namespaces.",
+        example=["namespace1", "namespace2"]
+    )
+):
+    """
+    API to delete stale pods based on user-selected statuses and namespaces.
+    """
+    logger.info(f"Started deleting stale pods for statuses {statuses} and namespaces {namespaces}")
+
+    try:
+        k8s_client = get_openshift_client(openshift_cluster_url, username, password)
+    except Exception as e:
+        logger.error(f"Error initializing OpenShift client: {e}")
+        raise HTTPException(status_code=500, detail="Failed to authenticate with OpenShift cluster")
+
+    if namespaces is None:
+        logger.info("No namespaces provided, listing non-prod namespaces.")
+        try:
+            dyn_client = DynamicClient(k8s_client)
+            all_projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project").get()
+            namespaces = [
+                project.metadata.name
+                for project in all_projects.items
+                if is_non_prod_namespace(k8s_client, project.metadata.name)
+            ]
+            logger.info(f"Found namespaces: {namespaces}")
+        except Exception as e:
+            logger.error(f"Error retrieving namespaces: {e}")
+            raise HTTPException(status_code=500, detail="Failed to retrieve namespaces")
+
+    try:
+        result = remove_stale_pods(k8s_client, namespaces, statuses)
+        logger.info(f"Completed stale pod deletion. Deleted pods: {result['deleted_pods']}")
+        return result
+    except Exception as e:
+        logger.error(f"Error in removing stale pods: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete stale pods")
