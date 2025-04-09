@@ -526,3 +526,187 @@ def delete_stale_pods_endpoint(
     except Exception as e:
         logger.error(f"Error in removing stale pods: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete stale pods")
+
+
+
+
+----@@@@@-----
+
+
+from typing import List, Optional
+from datetime import datetime
+from fastapi import Query
+from openshift.dynamic import DynamicClient
+import logging
+
+# Logger setup
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Function to list stale pods based on status
+def list_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    """
+    List stale pods based on the user-defined statuses.
+
+    Parameters:
+    - k8s_client: OpenShift client to interact with the cluster.
+    - namespaces: List of namespaces to search for stale pods.
+    - statuses: List of statuses (e.g., 'CrashLoopBackOff', 'ImagePullBackOff') to identify stale pods.
+
+    Returns:
+    - A list of stale pods matching the specified statuses.
+    """
+    dyn_client = DynamicClient(k8s_client)
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+
+    stale_pods = []
+
+    for ns in namespaces:
+        try:
+            pod_list = pods.get(namespace=ns)
+            for pod in pod_list.items:
+                container_statuses = pod.status.containerStatuses or []
+                for cs in container_statuses:
+                    if cs.state.waiting and cs.state.waiting.reason in statuses:
+                        stale_pods.append({
+                            "namespace": ns,
+                            "name": pod.metadata.name,
+                            "status": cs.state.waiting.reason,
+                            "container_name": cs.name,
+                            "created_at": pod.metadata.creationTimestamp
+                        })
+        except Exception as e:
+            logger.error(f"Error retrieving pods from namespace {ns}: {e}")
+
+    return stale_pods
+
+# Function to remove stale pods and associated resources like ReplicaSet and DeploymentConfig
+def remove_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    stale_pods = list_stale_pods(k8s_client, namespaces, statuses)
+    dyn_client = DynamicClient(k8s_client)
+    deleted_pods = []
+
+    for pod in stale_pods:
+        try:
+            # Remove the pod
+            dyn_client.resources.get(api_version="v1", kind="Pod").delete(
+                namespace=pod["namespace"], name=pod["name"]
+            )
+            logger.info(f"Deleted pod {pod['name']} from namespace {pod['namespace']}")
+            deleted_pods.append(pod)
+
+            # Check if the pod is associated with a ReplicaSet or ReplicaController
+            associated_rs = get_associated_replicaset(k8s_client, pod["namespace"], pod["name"])
+            if associated_rs:
+                delete_associated_replicaset(k8s_client, pod["namespace"], associated_rs)
+                
+            # Check if the ReplicaSet is associated with a DeploymentConfig or Deployment
+            associated_dc = get_associated_deploymentconfig(k8s_client, pod["namespace"], associated_rs)
+            if associated_dc:
+                delete_associated_deploymentconfig(k8s_client, pod["namespace"], associated_dc)
+
+        except Exception as e:
+            logger.error(f"Error removing pod {pod['name']}: {e}")
+
+    return {"deleted_pods": deleted_pods}
+
+# Function to get associated ReplicaSet for a pod
+def get_associated_replicaset(k8s_client, namespace: str, pod_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+    
+    try:
+        pod = pods.get(name=pod_name, namespace=namespace)
+        for owner in pod.metadata.ownerReferences:
+            if owner.kind == "ReplicaSet":
+                return owner.name
+    except Exception as e:
+        logger.error(f"Error retrieving ReplicaSet for pod {pod_name}: {e}")
+    return None
+
+# Function to delete associated ReplicaSet
+def delete_associated_replicaset(k8s_client, namespace: str, replicaset_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet").delete(
+            namespace=namespace, name=replicaset_name
+        )
+        logger.info(f"Deleted ReplicaSet {replicaset_name} from namespace {namespace}")
+    except Exception as e:
+        logger.error(f"Error deleting ReplicaSet {replicaset_name}: {e}")
+
+# Function to get associated DeploymentConfig for a ReplicaSet
+def get_associated_deploymentconfig(k8s_client, namespace: str, replicaset_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    deployments = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+
+    try:
+        deployment_list = deployments.get(namespace=namespace)
+        for deployment in deployment_list.items:
+            for rs in deployment.spec.replicasets:
+                if rs.name == replicaset_name:
+                    return deployment.metadata.name
+    except Exception as e:
+        logger.error(f"Error retrieving DeploymentConfig for ReplicaSet {replicaset_name}: {e}")
+    return None
+
+# Function to delete associated DeploymentConfig
+def delete_associated_deploymentconfig(k8s_client, namespace: str, deploymentconfig_name: str):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig").delete(
+            namespace=namespace, name=deploymentconfig_name
+        )
+        logger.info(f"Deleted DeploymentConfig {deploymentconfig_name} from namespace {namespace}")
+    except Exception as e:
+        logger.error(f"Error deleting DeploymentConfig {deploymentconfig_name}: {e}")
+
+# Function to list stale images
+def list_stale_images(k8s_client, image_pull_threshold: int = 30):
+    """
+    List stale images from the OpenShift registry or Artifactory.
+    
+    Parameters:
+    - k8s_client: OpenShift client to interact with the cluster.
+    - image_pull_threshold: Time in days since the image was last pulled to consider it stale.
+
+    Returns:
+    - A list of stale images.
+    """
+    dyn_client = DynamicClient(k8s_client)
+    images = dyn_client.resources.get(api_version="image.openshift.io/v1", kind="ImageStream")
+    
+    stale_images = []
+
+    try:
+        # Get all image streams across namespaces
+        image_stream_list = images.get()
+        for image_stream in image_stream_list.items:
+            for tag in image_stream.status.tags:
+                image_tag = tag.get("tag")
+                image_data = tag.get("items", [])
+                if not image_data:
+                    continue
+
+                # Check if image has not been used recently
+                for image in image_data:
+                    image_pull_time = image.get("created", None)
+                    if image_pull_time:
+                        # Convert the 'created' timestamp to a datetime object
+                        created_time = datetime.strptime(image_pull_time, "%Y-%m-%dT%H:%M:%SZ")
+                        # Calculate the difference in days between current date and image creation date
+                        days_since_pull = (datetime.utcnow() - created_time).days
+
+                        if days_since_pull > image_pull_threshold:
+                            stale_images.append({
+                                "image_stream": image_stream.metadata.name,
+                                "tag": image_tag,
+                                "image_digest": image.imageDigest,
+                                "created_at": created_time,
+                                "days_since_pull": days_since_pull
+                            })
+                        
+    except Exception as e:
+        logger.error(f"Error listing stale images: {e}")
+
+    return stale_images
