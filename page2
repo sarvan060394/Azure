@@ -132,3 +132,21 @@ The implementation for this story has been successfully completed. Below are the
 	•	Tested the end-to-end deployment process through Jenkins to ensure the correct image is pulled and deployed.
 
 With these changes, the story is now complete, and we can proceed with closing it. Let me know if any further updates or refinements are needed.
+
+
+Given a pod exists in the cluster
+When the delete_stale_pods API is invoked
+Then the API should:
+	1.	Case 1: If the pod has no owner (i.e., ownerReferences is empty), delete the pod immediately. ￼
+	2.	Case 2: If the pod is owned by a ReplicaSet or ReplicationController, verify that the owner resource no longer exists. If the owner is absent, delete the pod.
+	3.	Case 3: If the pod is owned by a ReplicaSet or ReplicationController that still exists, do not delete the pod. ￼
+
+⸻
+
+📌 Definition of Done (DoD)
+	•	The delete_stale_pods API correctly identifies and deletes pods without owners.
+	•	The API checks for the existence of ReplicaSet or ReplicationController owners before deleting pods. ￼
+	•	Pods with existing owners are not deleted. ￼
+	•	Unit tests cover all three cases: no owner, owner deleted, and owner exists.
+	•	Integration tests validate the API’s behavior in a live cluster environment.
+	•	Documentation is updated to reflect the enhanced behavior of the delete_stale_pods API.
