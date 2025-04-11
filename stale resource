@@ -1125,3 +1125,196 @@ def has_other_running_pods(dyn_client, namespace, parent_name, parent_kind):
                     if rc.metadata.ownerReferences and rc.metadata.ownerReferences[0].name == parent_name:
                         return True
     return False
+
+
+-----:::check this dc delete llgic code:-------
+
+from fastapi import FastAPI, Query
+from kubernetes import client, config
+from openshift.dynamic import DynamicClient
+from typing import List, Optional
+import logging
+
+app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def get_openshift_client(cluster_url: str, username: str, password: str):
+    configuration = client.Configuration()
+    configuration.host = cluster_url
+    configuration.verify_ssl = False
+    configuration.username = username
+    configuration.password = password
+    client.Configuration.set_default(configuration)
+    return client.ApiClient(configuration)
+
+@app.post("/delete-stale-pods")
+def delete_stale_pods_endpoint(
+    openshift_cluster_url: str,
+    username: str,
+    password: str,
+    statuses: List[str] = Query(["CrashLoopBackOff", "ImagePullBackOff", "Error"]),
+    namespaces: Optional[List[str]] = Query(None)
+):
+    """
+    API to delete stale pods and their associated ReplicaSets/ReplicationControllers and Deployment/DeploymentConfig if needed.
+    """
+    try:
+        k8s_client = get_openshift_client(openshift_cluster_url, username, password)
+        dyn_client = DynamicClient(k8s_client)
+
+        if namespaces is None:
+            all_projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project").get()
+            namespaces = [
+                project.metadata.name
+                for project in all_projects.items
+                if is_non_prod_namespace(k8s_client, project.metadata.name)
+            ]
+
+        stale_pods = list_stale_pods(k8s_client, namespaces, statuses)
+        deleted = process_stale_pods(k8s_client, stale_pods)
+        return {"deleted": deleted}
+    except Exception as e:
+        logger.error(f"Failed to delete stale pods: {e}")
+        return {"error": str(e)}
+
+def is_non_prod_namespace(k8s_client, namespace: str) -> bool:
+    dyn_client = DynamicClient(k8s_client)
+    projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project")
+    try:
+        project = projects.get(name=namespace)
+        env_type = project.metadata.labels.get("env_type", "").lower()
+        return env_type == "nonprod"
+    except Exception as e:
+        logger.warning(f"Could not determine env_type for namespace {namespace}: {e}")
+        return False
+
+def list_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
+    dyn_client = DynamicClient(k8s_client)
+    pods_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    stale_pods = []
+
+    for ns in namespaces:
+        if not is_non_prod_namespace(k8s_client, ns):
+            continue
+        try:
+            pod_list = pods_api.get(namespace=ns)
+            for pod in pod_list.items:
+                container_statuses = pod.status.containerStatuses or []
+                for cs in container_statuses:
+                    if cs.state.waiting and cs.state.waiting.reason in statuses:
+                        stale_pods.append({
+                            "namespace": ns,
+                            "name": pod.metadata.name,
+                            "uid": pod.metadata.uid,
+                            "owner_references": pod.metadata.ownerReferences,
+                        })
+        except Exception as e:
+            logger.error(f"Error listing pods in namespace {ns}: {e}")
+
+    return stale_pods
+
+def process_stale_pods(k8s_client, stale_pods: List[dict]):
+    dyn_client = DynamicClient(k8s_client)
+    deleted = []
+
+    for pod in stale_pods:
+        try:
+            logger.info(f"Processing pod: {pod['name']} in namespace {pod['namespace']}")
+            owner_refs = pod.get("owner_references", [])
+            if not owner_refs:
+                delete_pod(dyn_client, pod)
+                deleted.append(pod)
+                continue
+
+            owner = owner_refs[0]
+            if owner.kind == "ReplicaSet":
+                deleted.extend(handle_replicaset(dyn_client, pod, owner))
+            elif owner.kind == "ReplicationController":
+                deleted.extend(handle_replicacontroller(dyn_client, pod, owner))
+            else:
+                delete_pod(dyn_client, pod)
+                deleted.append(pod)
+        except Exception as e:
+            logger.error(f"Error processing pod {pod['name']}: {e}")
+
+    return deleted
+
+def handle_replicaset(dyn_client, pod, owner):
+    rs_api = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    deploy_api = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+    namespace = pod["namespace"]
+    deleted = []
+
+    rs = rs_api.get(name=owner.name, namespace=namespace)
+    rs_owner = rs.metadata.ownerReferences[0] if rs.metadata.ownerReferences else None
+
+    if rs_owner and rs_owner.kind == "Deployment":
+        deployment = deploy_api.get(name=rs_owner.name, namespace=namespace)
+        all_rs = rs_api.get(namespace=namespace, label_selector=f"app={deployment.metadata.labels.get('app')}")
+
+        running_pods = get_running_pods_by_deployment(dyn_client, namespace, rs_owner.name)
+        if running_pods:
+            logger.info(f"Deployment {rs_owner.name} has running pods. Deleting only RS {owner.name} and pod.")
+            rs_api.delete(name=owner.name, namespace=namespace)
+        else:
+            logger.info(f"No running pods found. Deleting Deployment {rs_owner.name}, RS {owner.name}, and pod.")
+            deploy_api.delete(name=rs_owner.name, namespace=namespace)
+            rs_api.delete(name=owner.name, namespace=namespace)
+
+    delete_pod(dyn_client, pod)
+    deleted.append(pod)
+    return deleted
+
+def handle_replicacontroller(dyn_client, pod, owner):
+    rc_api = dyn_client.resources.get(api_version="v1", kind="ReplicationController")
+    dc_api = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+    namespace = pod["namespace"]
+    deleted = []
+
+    rc = rc_api.get(name=owner.name, namespace=namespace)
+    rc_owner = rc.metadata.ownerReferences[0] if rc.metadata.ownerReferences else None
+
+    if rc_owner and rc_owner.kind == "DeploymentConfig":
+        dc = dc_api.get(name=rc_owner.name, namespace=namespace)
+        running_pods = get_running_pods_by_dc(dyn_client, namespace, rc_owner.name)
+        if running_pods:
+            logger.info(f"DC {rc_owner.name} has running pods. Deleting only RC {owner.name} and pod.")
+            rc_api.delete(name=owner.name, namespace=namespace)
+        else:
+            logger.info(f"No running pods found. Deleting DC {rc_owner.name}, RC {owner.name}, and pod.")
+            dc_api.delete(name=rc_owner.name, namespace=namespace)
+            rc_api.delete(name=owner.name, namespace=namespace)
+
+    delete_pod(dyn_client, pod)
+    deleted.append(pod)
+    return deleted
+
+def delete_pod(dyn_client, pod):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    logger.info(f"Deleting pod {pod['name']} in namespace {pod['namespace']}")
+    pod_api.delete(name=pod["name"], namespace=pod["namespace"])
+
+def get_running_pods_by_deployment(dyn_client, namespace: str, deployment_name: str):
+    pods_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    pod_list = pods_api.get(namespace=namespace)
+    running = []
+    for pod in pod_list.items:
+        if pod.metadata.ownerReferences:
+            for owner in pod.metadata.ownerReferences:
+                if owner.kind == "ReplicaSet" and deployment_name in owner.name:
+                    if pod.status.phase == "Running":
+                        running.append(pod)
+    return running
+
+def get_running_pods_by_dc(dyn_client, namespace: str, dc_name: str):
+    pods_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    pod_list = pods_api.get(namespace=namespace)
+    running = []
+    for pod in pod_list.items:
+        if pod.metadata.ownerReferences:
+            for owner in pod.metadata.ownerReferences:
+                if owner.kind == "ReplicationController" and dc_name in owner.name:
+                    if pod.status.phase == "Running":
+                        running.append(pod)
+    return running
