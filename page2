@@ -150,3 +150,33 @@ Then the API should:
 	•	Unit tests cover all three cases: no owner, owner deleted, and owner exists.
 	•	Integration tests validate the API’s behavior in a live cluster environment.
 	•	Documentation is updated to reflect the enhanced behavior of the delete_stale_pods API.
+
+
+User Story 1: Delete Pods Solely Owned by a ReplicaSet
+
+As a Kubernetes cluster administrator,
+I want the delete_stale_pods API to identify and delete pods that are solely owned by a ReplicaSet,
+So that orphaned pods and their associated ReplicaSets are efficiently cleaned up, freeing up cluster resources.
+
+Acceptance Criteria:
+	•	The API identifies pods with a single owner reference to a ReplicaSet.
+	•	Upon identification, the API deletes both the pod and its associated ReplicaSet.
+	•	Deletion operations respect Kubernetes finalizers and owner reference propagation policies to prevent orphaned resources.
+
+⸻
+
+📝 User Story 2: Delete Pods Owned by ReplicaSet and Deployment When Deployment Has No Active Pods
+
+As a Kubernetes cluster administrator,
+I want the delete_stale_pods API to delete pods owned by both a ReplicaSet and a Deployment when the Deployment has no active running pods,
+So that redundant resources are removed, maintaining cluster efficiency.
+
+Acceptance Criteria:
+	•	The API identifies pods with owner references to both a ReplicaSet and a Deployment.
+	•	The API checks if the associated Deployment has any active running pods.
+	•	If the Deployment has no active running pods:
+	•	Delete the ReplicaSet.
+	•	Delete the Deployment.
+	•	Delete the pod. ￼
+	•	If the Deployment has active running pods:
+	•	Do not delete the pod, ReplicaSet, or Deployment.
