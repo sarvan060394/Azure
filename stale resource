@@ -1358,3 +1358,56 @@ def handle_replicaset(dyn_client, pod, owner):
     delete_pod(dyn_client, pod)
     deleted.append(pod)
     return deleted
+
+..........
+
+def handle_replicaset(dyn_client, pod, owner):
+    rs_api = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    deploy_api = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+    namespace = pod["namespace"]
+    deleted = []
+
+    try:
+        rs = rs_api.get(name=owner.name, namespace=namespace)
+        rs_owner = rs.metadata.ownerReferences[0] if rs.metadata.ownerReferences else None
+
+        if rs_owner and rs_owner.kind == "Deployment":
+            deployment = deploy_api.get(name=rs_owner.name, namespace=namespace)
+
+            # Get all RS under this Deployment
+            all_rs = rs_api.get(namespace=namespace)
+            deployment_uid = deployment.metadata.uid
+            owned_rs = [
+                r for r in all_rs.items
+                if r.metadata.ownerReferences and any(
+                    o.kind == "Deployment" and o.uid == deployment_uid for o in r.metadata.ownerReferences
+                )
+            ]
+            has_running = False
+            for r in owned_rs:
+                if has_running_pods(dyn_client, namespace, r.metadata.name):
+                    has_running = True
+                    break
+
+            if has_running:
+                # Deployment has running pod, delete only this RS and its pod
+                logger.info(f"Deployment {deployment.metadata.name} has running pods. Deleting RS {rs.metadata.name} and pod {pod['name']}")
+                rs_api.delete(name=rs.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                deleted.append(pod)
+            else:
+                # No running pod in any RS => delete Deployment, RS, and pod
+                logger.info(f"Deployment {deployment.metadata.name} has NO running pods. Deleting deployment, RS {rs.metadata.name}, and pod {pod['name']}")
+                deploy_api.delete(name=deployment.metadata.name, namespace=namespace)
+                rs_api.delete(name=rs.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                deleted.append(pod)
+        else:
+            # Pod not attached to RS under Deployment
+            delete_pod(dyn_client, pod)
+            deleted.append(pod)
+
+    except Exception as e:
+        logger.error(f"Error handling ReplicaSet for pod {pod['name']}: {e}")
+
+    return deleted
