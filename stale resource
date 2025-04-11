@@ -1,3 +1,4 @@
+
 def is_non_prod_namespace(namespace: str) -> bool:
     return "prod" not in namespace.lower()
 def list_stale_pods(k8s_client, namespaces: List[str], statuses: List[str]):
@@ -1318,3 +1319,42 @@ def get_running_pods_by_dc(dyn_client, namespace: str, dc_name: str):
                     if pod.status.phase == "Running":
                         running.append(pod)
     return running
+
+
+----₹₹₹-----
+
+
+def handle_replicaset(dyn_client, pod, owner):
+    rs_api = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    deploy_api = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+    namespace = pod["namespace"]
+    deleted = []
+
+    rs = rs_api.get(name=owner.name, namespace=namespace)
+    rs_owner = rs.metadata.ownerReferences[0] if rs.metadata.ownerReferences else None
+
+    if rs_owner and rs_owner.kind == "Deployment":
+        deployment = deploy_api.get(name=rs_owner.name, namespace=namespace)
+
+        # Safely handle missing labels
+        label_selector = None
+        if deployment.metadata.labels and "app" in deployment.metadata.labels:
+            label_selector = f"app={deployment.metadata.labels['app']}"
+
+        if label_selector:
+            all_rs = rs_api.get(namespace=namespace, label_selector=label_selector)
+        else:
+            all_rs = rs_api.get(namespace=namespace)
+
+        running_pods = get_running_pods_by_deployment(dyn_client, namespace, rs_owner.name)
+        if running_pods:
+            logger.info(f"Deployment {rs_owner.name} has running pods. Deleting only RS {owner.name} and pod.")
+            rs_api.delete(name=owner.name, namespace=namespace)
+        else:
+            logger.info(f"No running pods found. Deleting Deployment {rs_owner.name}, RS {owner.name}, and pod.")
+            deploy_api.delete(name=rs_owner.name, namespace=namespace)
+            rs_api.delete(name=owner.name, namespace=namespace)
+
+    delete_pod(dyn_client, pod)
+    deleted.append(pod)
+    return deleted
