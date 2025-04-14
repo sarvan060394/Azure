@@ -27,6 +27,11 @@ Delete selected pods from OpenShift
 
 Example Pod Statuses Supported
 Pod Status	Description
+
+
+
+
+
 Running	Actively running pods (not typically deleted)
 Completed	Successfully completed jobs (safe to delete)
 CrashLoopBackOff	Crashing repeatedly and restarting
@@ -118,3 +123,20 @@ User selects pods to delete based on status
         └── Delete the pod(s) and selected owners
 Conclusion
 The stale resource pruner provides a powerful, controlled interface to clean up unused workloads in OpenShift. However, due to the complexity of resource ownership and tagging limitations in non-prod environments, caution is essential to prevent unintended deletions. Future enhancements aim to provide better visibility, control, and granularity in targeting stale resources.
+
+
+
+✅ Step-by-step:
+	1.	Get the ReplicaSet that owns the problematic pod.
+	2.	Check if that ReplicaSet is owned by a Deployment.
+	3.	If yes:
+	•	Fetch all ReplicaSets owned by the same Deployment.
+	•	Check if any of them have running pods.
+	•	Case 1: There are running pods (healthy older version, for example):
+	•	✅ Delete the problematic pod and its ReplicaSet only.
+	•	❌ Do not delete the Deployment, because it’s serving healthy traffic.
+	•	Case 2: There are no running pods under any ReplicaSet:
+	•	✅ Delete the Deployment, ReplicaSet, and pod.
+	•	Deployment is effectively inactive — safe to remove.
+	4.	If the ReplicaSet is not owned by a Deployment:
+	•	✅ Just delete the pod (standalone or orphaned ReplicaSet).
