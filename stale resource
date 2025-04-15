@@ -1359,7 +1359,58 @@ def handle_replicaset(dyn_client, pod, owner):
     deleted.append(pod)
     return deleted
 
-..........
+........
+
+
+import logging
+from kubernetes.dynamic import DynamicClient
+
+logger = logging.getLogger("stale-pod-cleaner")
+logging.basicConfig(level=logging.INFO)
+
+
+def handle_stale_pod(dyn_client, pod):
+    namespace = pod["namespace"]
+    pod_name = pod["name"]
+    pod_obj = get_pod_object(dyn_client, namespace, pod_name)
+
+    if not pod_obj:
+        logger.warning(f"Pod {pod_name} not found in namespace {namespace}")
+        return []
+
+    owner_refs = pod_obj.metadata.ownerReferences or []
+    if not owner_refs:
+        logger.info(f"Pod {pod_name} has no owner. Deleting pod.")
+        delete_pod(dyn_client, pod)
+        return [pod]
+
+    owner = owner_refs[0]
+    if owner.kind == "ReplicaSet":
+        return handle_replicaset(dyn_client, pod, owner)
+    elif owner.kind == "ReplicationController":
+        return handle_replicationcontroller(dyn_client, pod, owner)
+    else:
+        logger.info(f"Pod {pod_name} has unsupported owner kind: {owner.kind}. Skipping.")
+        return []
+
+
+def get_pod_object(dyn_client, namespace, pod_name):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        return pod_api.get(name=pod_name, namespace=namespace)
+    except Exception as e:
+        logger.error(f"Error retrieving pod {pod_name} in {namespace}: {e}")
+        return None
+
+
+def delete_pod(dyn_client, pod):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pod_api.delete(name=pod["name"], namespace=pod["namespace"])
+        logger.info(f"Deleted pod {pod['name']} in namespace {pod['namespace']}")
+    except Exception as e:
+        logger.error(f"Failed to delete pod {pod['name']} in {pod['namespace']}: {e}")
+
 
 def handle_replicaset(dyn_client, pod, owner):
     rs_api = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
@@ -1372,42 +1423,226 @@ def handle_replicaset(dyn_client, pod, owner):
         rs_owner = rs.metadata.ownerReferences[0] if rs.metadata.ownerReferences else None
 
         if rs_owner and rs_owner.kind == "Deployment":
-            deployment = deploy_api.get(name=rs_owner.name, namespace=namespace)
-
-            # Get all RS under this Deployment
+            deploy = deploy_api.get(name=rs_owner.name, namespace=namespace)
             all_rs = rs_api.get(namespace=namespace)
-            deployment_uid = deployment.metadata.uid
-            owned_rs = [
-                r for r in all_rs.items
-                if r.metadata.ownerReferences and any(
-                    o.kind == "Deployment" and o.uid == deployment_uid for o in r.metadata.ownerReferences
-                )
-            ]
-            has_running = False
-            for r in owned_rs:
-                if has_running_pods(dyn_client, namespace, r.metadata.name):
-                    has_running = True
-                    break
+            owned_rs = [r for r in all_rs.items if is_owned_by(r, deploy.metadata.uid)]
 
-            if has_running:
-                # Deployment has running pod, delete only this RS and its pod
-                logger.info(f"Deployment {deployment.metadata.name} has running pods. Deleting RS {rs.metadata.name} and pod {pod['name']}")
-                rs_api.delete(name=rs.metadata.name, namespace=namespace)
-                delete_pod(dyn_client, pod)
-                deleted.append(pod)
+            if has_running_pods_in_sets(dyn_client, namespace, owned_rs):
+                logger.info(f"Deployment {deploy.metadata.name} has running pods. Skipping deletion for pod {pod['name']}")
+                return []
             else:
-                # No running pod in any RS => delete Deployment, RS, and pod
-                logger.info(f"Deployment {deployment.metadata.name} has NO running pods. Deleting deployment, RS {rs.metadata.name}, and pod {pod['name']}")
-                deploy_api.delete(name=deployment.metadata.name, namespace=namespace)
+                logger.info(f"No running pods in Deployment {deploy.metadata.name}. Deleting deployment, rs and pod.")
+                deploy_api.delete(name=deploy.metadata.name, namespace=namespace)
                 rs_api.delete(name=rs.metadata.name, namespace=namespace)
                 delete_pod(dyn_client, pod)
-                deleted.append(pod)
+                return [pod]
         else:
-            # Pod not attached to RS under Deployment
+            logger.info(f"ReplicaSet {rs.metadata.name} is not part of a Deployment. Deleting RS and pod.")
+            rs_api.delete(name=rs.metadata.name, namespace=namespace)
             delete_pod(dyn_client, pod)
-            deleted.append(pod)
+            return [pod]
 
     except Exception as e:
         logger.error(f"Error handling ReplicaSet for pod {pod['name']}: {e}")
+        return []
 
-    return deleted
+
+def handle_replicationcontroller(dyn_client, pod, owner):
+    rc_api = dyn_client.resources.get(api_version="v1", kind="ReplicationController")
+    dc_api = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+    namespace = pod["namespace"]
+    deleted = []
+
+    try:
+        rc = rc_api.get(name=owner.name, namespace=namespace)
+        dc_name = rc.metadata.annotations.get("openshift.io/deployment-config.name")
+        if dc_name:
+            dc = dc_api.get(name=dc_name, namespace=namespace)
+            all_rcs = rc_api.get(namespace=namespace)
+            owned_rcs = [
+                r for r in all_rcs.items
+                if r.metadata.annotations and r.metadata.annotations.get("openshift.io/deployment-config.name") == dc_name
+            ]
+
+            if has_running_pods_in_sets(dyn_client, namespace, owned_rcs):
+                logger.info(f"DeploymentConfig {dc_name} has running pods. Skipping deletion for pod {pod['name']}")
+                return []
+            else:
+                logger.info(f"No running pods in DC {dc_name}. Deleting DC, RC and pod.")
+                dc_api.delete(name=dc_name, namespace=namespace)
+                rc_api.delete(name=rc.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+        else:
+            logger.info(f"RC {rc.metadata.name} not tied to any DC. Deleting RC and pod.")
+            rc_api.delete(name=rc.metadata.name, namespace=namespace)
+            delete_pod(dyn_client, pod)
+            return [pod]
+
+    except Exception as e:
+        logger.error(f"Error handling RC for pod {pod['name']}: {e}")
+        return []
+
+
+def is_owned_by(resource, owner_uid):
+    owner_refs = resource.metadata.ownerReferences or []
+    return any(o.uid == owner_uid for o in owner_refs)
+
+
+def has_running_pods_in_sets(dyn_client, namespace, resources):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pods = pod_api.get(namespace=namespace)
+        for pod in pods.items:
+            for o in pod.metadata.ownerReferences or []:
+                if any(r.metadata.name == o.name for r in resources) and pod.status.phase == "Running":
+                    return True
+    except Exception as e:
+        logger.error(f"Error checking for running pods in namespace {namespace}: {e}")
+    return False
+
+
+
+-------@@@@---)))------
+
+
+import logging
+from kubernetes.dynamic import DynamicClient
+
+logger = logging.getLogger("stale-pod-cleaner")
+logging.basicConfig(level=logging.INFO)
+
+
+def handle_stale_pod(dyn_client, pod):
+    namespace = pod["namespace"]
+    pod_name = pod["name"]
+    pod_obj = get_pod_object(dyn_client, namespace, pod_name)
+
+    if not pod_obj:
+        logger.warning(f"Pod {pod_name} not found in namespace {namespace}")
+        return []
+
+    owner_refs = pod_obj.metadata.ownerReferences or []
+    if not owner_refs:
+        logger.info(f"Pod {pod_name} has no owner. Deleting pod.")
+        delete_pod(dyn_client, pod)
+        return [pod]
+
+    owner = owner_refs[0]
+    if owner.kind == "ReplicaSet":
+        return handle_replicaset(dyn_client, pod, owner)
+    elif owner.kind == "ReplicationController":
+        return handle_replicationcontroller(dyn_client, pod, owner)
+    else:
+        logger.info(f"Pod {pod_name} has unsupported owner kind: {owner.kind}. Skipping.")
+        return []
+
+
+def get_pod_object(dyn_client, namespace, pod_name):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        return pod_api.get(name=pod_name, namespace=namespace)
+    except Exception as e:
+        logger.error(f"Error retrieving pod {pod_name} in {namespace}: {e}")
+        return None
+
+
+def delete_pod(dyn_client, pod):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pod_api.delete(name=pod["name"], namespace=pod["namespace"])
+        logger.info(f"Deleted pod {pod['name']} in namespace {pod['namespace']}")
+    except Exception as e:
+        logger.error(f"Failed to delete pod {pod['name']} in {pod['namespace']}: {e}")
+
+
+def handle_replicaset(dyn_client, pod, owner):
+    rs_api = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    deploy_api = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+    namespace = pod["namespace"]
+    deleted = []
+
+    try:
+        rs = rs_api.get(name=owner.name, namespace=namespace)
+        rs_owner = rs.metadata.ownerReferences[0] if rs.metadata.ownerReferences else None
+
+        if rs_owner and rs_owner.kind == "Deployment":
+            deploy = deploy_api.get(name=rs_owner.name, namespace=namespace)
+            all_rs = rs_api.get(namespace=namespace)
+            owned_rs = [r for r in all_rs.items if is_owned_by(r, deploy.metadata.uid)]
+
+            if has_running_pods_in_sets(dyn_client, namespace, owned_rs):
+                logger.info(f"Deployment {deploy.metadata.name} has running pods. Skipping deletion for pod {pod['name']}")
+                return []
+            else:
+                logger.info(f"No running pods in Deployment {deploy.metadata.name}. Deleting deployment, rs and pod.")
+                deploy_api.delete(name=deploy.metadata.name, namespace=namespace)
+                rs_api.delete(name=rs.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+        else:
+            logger.info(f"ReplicaSet {rs.metadata.name} is not part of a Deployment. Deleting RS and pod.")
+            rs_api.delete(name=rs.metadata.name, namespace=namespace)
+            delete_pod(dyn_client, pod)
+            return [pod]
+
+    except Exception as e:
+        logger.error(f"Error handling ReplicaSet for pod {pod['name']}: {e}")
+        return []
+
+
+def handle_replicationcontroller(dyn_client, pod, owner):
+    rc_api = dyn_client.resources.get(api_version="v1", kind="ReplicationController")
+    dc_api = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+    namespace = pod["namespace"]
+    deleted = []
+
+    try:
+        rc = rc_api.get(name=owner.name, namespace=namespace)
+        dc_name = rc.metadata.annotations.get("openshift.io/deployment-config.name")
+        if dc_name:
+            dc = dc_api.get(name=dc_name, namespace=namespace)
+            all_rcs = rc_api.get(namespace=namespace)
+            owned_rcs = [
+                r for r in all_rcs.items
+                if r.metadata.annotations and r.metadata.annotations.get("openshift.io/deployment-config.name") == dc_name
+            ]
+
+            if has_running_pods_in_sets(dyn_client, namespace, owned_rcs):
+                logger.info(f"DeploymentConfig {dc_name} has running pods. Skipping deletion for pod {pod['name']}")
+                return []
+            else:
+                logger.info(f"No running pods in DC {dc_name}. Deleting DC, RC and pod.")
+                dc_api.delete(name=dc_name, namespace=namespace)
+                rc_api.delete(name=rc.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+        else:
+            logger.info(f"RC {rc.metadata.name} not tied to any DC. Deleting RC and pod.")
+            rc_api.delete(name=rc.metadata.name, namespace=namespace)
+            delete_pod(dyn_client, pod)
+            return [pod]
+
+    except Exception as e:
+        logger.error(f"Error handling RC for pod {pod['name']}: {e}")
+        return []
+
+
+def is_owned_by(resource, owner_uid):
+    owner_refs = resource.metadata.ownerReferences or []
+    return any(o.uid == owner_uid for o in owner_refs)
+
+
+def has_running_pods_in_sets(dyn_client, namespace, resources):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pods = pod_api.get(namespace=namespace)
+        for pod in pods.items:
+            for o in pod.metadata.ownerReferences or []:
+                if any(r.metadata.name == o.name for r in resources) and pod.status.phase == "Running":
+                    return True
+    except Exception as e:
+        logger.error(f"Error checking for running pods in namespace {namespace}: {e}")
+    return False
+
+
