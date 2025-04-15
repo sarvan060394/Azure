@@ -1,0 +1,16 @@
+def has_running_pods(dyn_client, namespace: str, owner_name: str):
+    """
+    Checks if any pods in the given namespace are owned by the specified ReplicaSet or ReplicationController
+    and are in Running status.
+    """
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pods = pod_api.get(namespace=namespace)
+        for pod in pods.items:
+            for owner in pod.metadata.ownerReferences or []:
+                if owner.name == owner_name and pod.status.phase == "Running":
+                    logger.info(f"Found running pod {pod.metadata.name} under owner {owner_name}")
+                    return True
+    except Exception as e:
+        logger.error(f"Error checking running pods for owner {owner_name} in namespace {namespace}: {e}")
+    return False
