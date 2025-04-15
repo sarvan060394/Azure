@@ -358,3 +358,23 @@ def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_nam
                 })
 
 
+
+
+.......
+
+
+def has_running_pods(k8s_client, namespace, parent_name, version, kind):
+    dyn_client = k8s_client
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pod_list = pods.get(namespace=namespace)
+        for pod in pod_list.items:
+            # Check ownership and actual status
+            if pod.metadata.owner_references:
+                for owner in pod.metadata.owner_references:
+                    if owner.kind == kind and owner.name == parent_name:
+                        if pod.status.phase == "Running":
+                            return True
+    except Exception as e:
+        logger.warning(f"Failed to get pods: {e}")
+    return False
