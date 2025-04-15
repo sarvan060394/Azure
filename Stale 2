@@ -257,3 +257,104 @@ def has_running_pods(k8s_client, namespace, parent_name, api_version, kind):
         if pod.status.phase == "Running":
             return True
     return False
+
+
+---///---
+
+from kubernetes.dynamic.exceptions import NotFoundError
+from kubernetes.dynamic.resource import ResourceInstance
+
+def has_running_pods(k8s_client, namespace, parent_name, version, kind):
+    dyn_client = k8s_client
+    pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pod_list = pods.get(namespace=namespace)
+        for pod in pod_list.items:
+            owners = pod.metadata.owner_references or []
+            for owner in owners:
+                if owner.kind == kind and owner.name == parent_name:
+                    if pod.status.phase == "Running":
+                        return True
+    except Exception as e:
+        logger.warning(f"Error checking running pods for {kind} {parent_name}: {e}")
+    return False
+
+
+def handle_replication_controller(k8s_client, rc_api, dc_api, pods_api, namespace, pod_name, rc_obj, deleted):
+    rc_name = rc_obj.metadata.name
+    rc_owners = rc_obj.metadata.owner_references or []
+
+    if not rc_owners:
+        rc_api.delete(namespace=namespace, name=rc_name)
+        pods_api.delete(namespace=namespace, name=pod_name)
+        logger.info(f"Deleted RC {rc_name} and pod {pod_name} in {namespace}")
+        deleted.append({"replicationcontroller": rc_name, "pod": pod_name, "namespace": namespace})
+        return
+
+    for owner in rc_owners:
+        if owner.kind == "DeploymentConfig":
+            dc_name = owner.name
+            if not has_running_pods(k8s_client, namespace, dc_name, "apps.openshift.io/v1", "DeploymentConfig"):
+                try:
+                    dc_api.delete(namespace=namespace, name=dc_name)
+                except Exception as e:
+                    logger.warning(f"DC {dc_name} may already be deleted: {e}")
+                rc_api.delete(namespace=namespace, name=rc_name)
+                pods_api.delete(namespace=namespace, name=pod_name)
+                logger.info(f"Deleted DC {dc_name}, RC {rc_name}, and pod {pod_name}")
+                deleted.append({
+                    "deploymentconfig": dc_name,
+                    "replicationcontroller": rc_name,
+                    "pod": pod_name,
+                    "namespace": namespace
+                })
+            else:
+                rc_api.delete(namespace=namespace, name=rc_name)
+                pods_api.delete(namespace=namespace, name=pod_name)
+                logger.info(f"Deleted RC {rc_name} and pod {pod_name} (active DC remains)")
+                deleted.append({
+                    "replicationcontroller": rc_name,
+                    "pod": pod_name,
+                    "namespace": namespace
+                })
+
+
+def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_name, rs_obj, deleted):
+    rs_name = rs_obj.metadata.name
+    rs_owners = rs_obj.metadata.owner_references or []
+
+    if not rs_owners:
+        rs_api.delete(namespace=namespace, name=rs_name)
+        pods_api.delete(namespace=namespace, name=pod_name)
+        logger.info(f"Deleted RS {rs_name} and pod {pod_name} in {namespace}")
+        deleted.append({"replicaset": rs_name, "pod": pod_name, "namespace": namespace})
+        return
+
+    for owner in rs_owners:
+        if owner.kind == "Deployment":
+            deployment_name = owner.name
+            if not has_running_pods(k8s_client, namespace, deployment_name, "apps/v1", "Deployment"):
+                try:
+                    dep_api.delete(namespace=namespace, name=deployment_name)
+                except Exception as e:
+                    logger.warning(f"Deployment {deployment_name} may already be deleted: {e}")
+                rs_api.delete(namespace=namespace, name=rs_name)
+                pods_api.delete(namespace=namespace, name=pod_name)
+                logger.info(f"Deleted Deployment {deployment_name}, RS {rs_name}, and pod {pod_name}")
+                deleted.append({
+                    "deployment": deployment_name,
+                    "replicaset": rs_name,
+                    "pod": pod_name,
+                    "namespace": namespace
+                })
+            else:
+                rs_api.delete(namespace=namespace, name=rs_name)
+                pods_api.delete(namespace=namespace, name=pod_name)
+                logger.info(f"Deleted RS {rs_name} and pod {pod_name} (active deployment remains)")
+                deleted.append({
+                    "replicaset": rs_name,
+                    "pod": pod_name,
+                    "namespace": namespace
+                })
+
+
