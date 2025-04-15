@@ -215,3 +215,45 @@ def is_non_prod_namespace(k8s_client, namespace: str) -> bool:
     except Exception as e:
         logger.error(f"Error checking namespace {namespace}: {e}")
         return False
+
+
+
+-------------
+
+def has_running_pods(k8s_client, namespace, parent_name, api_version, kind):
+    dyn_client = DynamicClient(k8s_client)
+    try:
+        parent_api = dyn_client.resources.get(api_version=api_version, kind=kind)
+        logger.info(f"Fetching {kind} named {parent_name} in namespace {namespace}")
+        parent = parent_api.get(namespace=namespace, name=parent_name)
+        if not parent:
+            logger.warning(f"{kind} {parent_name} not found in {namespace}")
+            return False
+
+        selector = parent.spec.selector.matchLabels
+        logger.info(f"Selector for {kind} {parent_name}: {selector}")
+        if not selector:
+            logger.warning(f"No selector found in {kind} {parent_name}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to get parent {kind} {parent_name}: {e}")
+        return False
+
+    label_selector = ",".join([f"{k}={v}" for k, v in selector.items()])
+    logger.info(f"Label selector constructed: {label_selector}")
+
+    try:
+        pods_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+        pods = pods_api.get(namespace=namespace, label_selector=label_selector)
+        if not pods or not hasattr(pods, 'items'):
+            logger.warning(f"No pods returned for selector {label_selector} in {namespace}")
+            return False
+    except Exception as e:
+        logger.error(f"Error retrieving pods in {namespace} with selector {label_selector}: {e}")
+        return False
+
+    for pod in pods.items:
+        logger.info(f"Checking pod {pod.metadata.name} with phase {pod.status.phase}")
+        if pod.status.phase == "Running":
+            return True
+    return False
