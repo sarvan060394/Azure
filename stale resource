@@ -1646,3 +1646,197 @@ def has_running_pods_in_sets(dyn_client, namespace, resources):
     return False
 
 
+
+----with all func-----
+
+
+import logging
+from fastapi import FastAPI, HTTPException
+from kubernetes import config
+from kubernetes.dynamic import DynamicClient
+from kubernetes.client import api_client
+from pydantic import BaseModel
+from typing import List
+
+# Setup logging
+logger = logging.getLogger("stale-pod-cleaner")
+logging.basicConfig(level=logging.INFO)
+
+# Initialize FastAPI app
+app = FastAPI()
+
+# Load kube config
+k8s_client = config.new_client_from_config()
+dyn_client = DynamicClient(k8s_client)
+
+class StalePodInput(BaseModel):
+    namespaces: List[str]
+    statuses: List[str]
+
+def is_nonprod_namespace(namespace_obj):
+    labels = namespace_obj.metadata.labels or {}
+    return labels.get("env_type") == "nonprod"
+
+def get_nonprod_namespaces(dyn_client):
+    v1_ns = dyn_client.resources.get(api_version="v1", kind="Namespace")
+    all_ns = v1_ns.get()
+    return [ns.metadata.name for ns in all_ns.items if is_nonprod_namespace(ns)]
+
+def get_pod_object(dyn_client, namespace, pod_name):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        return pod_api.get(name=pod_name, namespace=namespace)
+    except Exception as e:
+        logger.error(f"Error retrieving pod {pod_name} in {namespace}: {e}")
+        return None
+
+def delete_pod(dyn_client, pod):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pod_api.delete(name=pod["name"], namespace=pod["namespace"])
+        logger.info(f"Deleted pod {pod['name']} in namespace {pod['namespace']}")
+    except Exception as e:
+        logger.error(f"Failed to delete pod {pod['name']} in {pod['namespace']}: {e}")
+
+def is_owned_by(resource, owner_uid):
+    owner_refs = resource.metadata.ownerReferences or []
+    return any(o.uid == owner_uid for o in owner_refs)
+
+def has_running_pods_in_sets(dyn_client, namespace, resources):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    try:
+        pods = pod_api.get(namespace=namespace)
+        for pod in pods.items:
+            for o in pod.metadata.ownerReferences or []:
+                if any(r.metadata.name == o.name for r in resources) and pod.status.phase == "Running":
+                    return True
+    except Exception as e:
+        logger.error(f"Error checking for running pods in namespace {namespace}: {e}")
+    return False
+
+def handle_stale_pod(dyn_client, pod):
+    namespace = pod["namespace"]
+    pod_name = pod["name"]
+    pod_obj = get_pod_object(dyn_client, namespace, pod_name)
+
+    if not pod_obj:
+        logger.warning(f"Pod {pod_name} not found in namespace {namespace}")
+        return []
+
+    owner_refs = pod_obj.metadata.ownerReferences or []
+    if not owner_refs:
+        logger.info(f"Pod {pod_name} has no owner. Deleting pod.")
+        delete_pod(dyn_client, pod)
+        return [pod]
+
+    owner = owner_refs[0]
+    if owner.kind == "ReplicaSet":
+        return handle_replicaset(dyn_client, pod, owner)
+    elif owner.kind == "ReplicationController":
+        return handle_replicationcontroller(dyn_client, pod, owner)
+    else:
+        logger.info(f"Pod {pod_name} has unsupported owner kind: {owner.kind}. Skipping.")
+        return []
+
+def handle_replicaset(dyn_client, pod, owner):
+    rs_api = dyn_client.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    deploy_api = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+    namespace = pod["namespace"]
+
+    try:
+        rs = rs_api.get(name=owner.name, namespace=namespace)
+        rs_owner = rs.metadata.ownerReferences[0] if rs.metadata.ownerReferences else None
+
+        if rs_owner and rs_owner.kind == "Deployment":
+            deploy = deploy_api.get(name=rs_owner.name, namespace=namespace)
+            all_rs = rs_api.get(namespace=namespace)
+            owned_rs = [r for r in all_rs.items if is_owned_by(r, deploy.metadata.uid)]
+
+            if has_running_pods_in_sets(dyn_client, namespace, owned_rs):
+                logger.info(f"Deployment {deploy.metadata.name} has running pods. Deleting RS {rs.metadata.name} and pod.")
+                rs_api.delete(name=rs.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+            else:
+                logger.info(f"No running pods in Deployment {deploy.metadata.name}. Deleting Deployment, RS and pod.")
+                deploy_api.delete(name=deploy.metadata.name, namespace=namespace)
+                rs_api.delete(name=rs.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+        else:
+            logger.info(f"ReplicaSet {rs.metadata.name} not part of a Deployment. Deleting RS and pod.")
+            rs_api.delete(name=rs.metadata.name, namespace=namespace)
+            delete_pod(dyn_client, pod)
+            return [pod]
+    except Exception as e:
+        logger.error(f"Error handling ReplicaSet for pod {pod['name']}: {e}")
+        return []
+
+def handle_replicationcontroller(dyn_client, pod, owner):
+    rc_api = dyn_client.resources.get(api_version="v1", kind="ReplicationController")
+    dc_api = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+    namespace = pod["namespace"]
+
+    try:
+        rc = rc_api.get(name=owner.name, namespace=namespace)
+        dc_name = rc.metadata.annotations.get("openshift.io/deployment-config.name")
+        if dc_name:
+            dc = dc_api.get(name=dc_name, namespace=namespace)
+            all_rcs = rc_api.get(namespace=namespace)
+            owned_rcs = [
+                r for r in all_rcs.items
+                if r.metadata.annotations and r.metadata.annotations.get("openshift.io/deployment-config.name") == dc_name
+            ]
+
+            if has_running_pods_in_sets(dyn_client, namespace, owned_rcs):
+                logger.info(f"DC {dc_name} has running pods. Deleting RC {rc.metadata.name} and pod.")
+                rc_api.delete(name=rc.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+            else:
+                logger.info(f"No running pods in DC {dc_name}. Deleting DC, RC and pod.")
+                dc_api.delete(name=dc_name, namespace=namespace)
+                rc_api.delete(name=rc.metadata.name, namespace=namespace)
+                delete_pod(dyn_client, pod)
+                return [pod]
+        else:
+            logger.info(f"RC {rc.metadata.name} not part of a DC. Deleting RC and pod.")
+            rc_api.delete(name=rc.metadata.name, namespace=namespace)
+            delete_pod(dyn_client, pod)
+            return [pod]
+    except Exception as e:
+        logger.error(f"Error handling RC for pod {pod['name']}: {e}")
+        return []
+
+def list_stale_pods(dyn_client, namespaces, statuses):
+    pod_api = dyn_client.resources.get(api_version="v1", kind="Pod")
+    stale_pods = []
+
+    for ns in namespaces:
+        try:
+            pods = pod_api.get(namespace=ns)
+            for pod in pods.items:
+                if pod.status.phase in statuses:
+                    stale_pods.append({"name": pod.metadata.name, "namespace": ns})
+        except Exception as e:
+            logger.error(f"Error listing pods in namespace {ns}: {e}")
+    return stale_pods
+
+def process_stale_pods(dyn_client, pods):
+    deleted = []
+    for pod in pods:
+        deleted += handle_stale_pod(dyn_client, pod)
+    return deleted
+
+@app.post("/delete-stale-pods")
+def delete_stale_pods(input: StalePodInput):
+    try:
+        nonprod_namespaces = get_nonprod_namespaces(dyn_client)
+        target_namespaces = [ns for ns in input.namespaces if ns in nonprod_namespaces]
+        stale_pods = list_stale_pods(dyn_client, target_namespaces, input.statuses)
+        deleted_pods = process_stale_pods(dyn_client, stale_pods)
+        return {"deleted": deleted_pods}
+    except Exception as e:
+        logger.error(f"Error processing stale pods API: {e}")
+        raise HTTPException(status_code=500, detail="Internal error occurred while processing stale pods.")
+
