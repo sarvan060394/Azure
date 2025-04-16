@@ -141,3 +141,54 @@ def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_nam
             except Exception as e:
                 logger.warning(f"Failed to delete Deployment {deployment_name}: {e}")
             return
+
+
+def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_name, rs_obj, deleted):
+    rs_name = rs_obj.metadata.name
+    rs_owners = rs_obj.metadata.owner_references or []
+
+    if not rs_owners:
+        # RS has no Deployment owner — delete RS and pod
+        try:
+            rs_api.delete(namespace=namespace, name=rs_name)
+            logger.info(f"Deleted RS {rs_name} in {namespace}")
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(f"RS {rs_name} in {namespace} already deleted.")
+            else:
+                logger.error(f"Failed to delete RS {rs_name} in {namespace}: {str(e)}")
+
+        try:
+            pods_api.delete(namespace=namespace, name=pod_name)
+            logger.info(f"Deleted pod {pod_name} in {namespace}")
+            deleted.append({"pod": pod_name, "namespace": namespace})
+        except ApiException as e:
+            logger.error(f"Failed to delete pod {pod_name}: {str(e)}")
+        return
+
+    for owner in rs_owners:
+        if owner.kind == "Deployment":
+            deployment_name = owner.name
+            try:
+                deployment = dep_api.get(name=deployment_name, namespace=namespace)
+                label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
+                rs_list = rs_api.get(namespace=namespace)["items"]
+
+                active_running_pods = []
+                for rs in rs_list:
+                    labels = rs.spec.selector.match_labels or {}
+                    rs_label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
+                    pods = pods_api.get(namespace=namespace, label_selector=rs_label_selector)["items"]
+                    for p in pods:
+                        if p.status.phase == "Running" and p.metadata.name != pod_name:
+                            active_running_pods.append(p.metadata.name)
+
+                if not active_running_pods:
+                    # Safe to delete Deployment
+                    dep_api.delete(name=deployment_name, namespace=namespace)
+                    logger.info(f"Deleted Deployment {deployment_name} in {namespace}")
+                    deleted.append({"deployment": deployment_name, "namespace": namespace})
+                else:
+                    logger.info(f"Deployment {deployment_name} has other active pods: {active_running_pods} — skipping deletion.")
+            except ApiException as e:
+                logger.error(f"Failed to process Deployment {deployment_name}: {str(e)}")
