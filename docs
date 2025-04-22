@@ -1,142 +1,80 @@
-Image & Stale Resource Pruner
-Overview
-This Confluence page details the custom-built Image & Stale Resource Pruner application developed to manage and clean up unused container images in Artifactory and stale Kubernetes/OpenShift resources like pods, deployments, replica sets, and controllers.
+ Delete Stale Pods API – User Guide
+✅ Purpose
+In large OpenShift clusters, many stale pods remain due to job completions, crashes, or other issues. These unused pods can clutter the system or take up unnecessary resources.
 
-The pruner application exposes REST APIs with a FastAPI UI, allowing users to:
+To fix this, we’ve developed a "Delete Stale Pods API" — a smart cleanup system that:
 
-List and selectively delete images from Artifactory, OpenShift, or both.
+Lists stale pods by their status
 
-Identify and delete stale resources, particularly pods stuck in CrashLoopBackOff or Completed status, based on user input.
+Identifies pod ownership (ReplicaSet, Deployment, etc.)
 
-Module: Stale Resource (Pod) Deletion API
-Functionality
-The stale resource pruner includes a powerful API to delete pods from OpenShift by status. This is not limited to a fixed list of statuses.
+Deletes safely, without breaking running applications
 
-Key Capabilities:
-Automatically detects all pod statuses (e.g., CrashLoopBackOff, Completed, Evicted, Error, Pending, Terminating, etc.)
+👩‍💻 How It Works (User Perspective)
+As a user, you can:
 
-Displays a categorized list of pods grouped by status
+Access the FastAPI Web UI
 
-Enables users to:
+Select pod statuses you want to clean up:
 
-Select specific pod statuses (e.g., only Evicted or Error)
+Examples: CrashLoopBackOff, Completed, Error, Terminating, Pending, Evicted (All statuses supported)
 
-Review matching pods
+Choose namespaces to target
 
-Delete selected pods from OpenShift
+The API automatically filters only non-prod namespaces based on the label: env_type=nonprod
 
-Example Pod Statuses Supported
-Pod Status	Description
+Review the list of matching stale pods
+
+Confirm deletion to start cleanup
+
+The API will:
+
+Trace pod ownership (RS/RC → Deployment/DC)
+
+Delete associated resources only if safe
+
+Log everything clearly for traceability
 
 
 
+🧬 Key Logic Scenarios Handled
+Case 1: Pod has no owner
+The pod is not part of any controller.
 
+Action: Pod is deleted directly.
 
-Running	Actively running pods (not typically deleted)
-Completed	Successfully completed jobs (safe to delete)
-CrashLoopBackOff	Crashing repeatedly and restarting
-Error	Pods that failed permanently
-Evicted	Removed by Kubelet due to resource pressure
-Pending	Scheduled but not yet running (e.g., resource constraints)
-Terminating	Stuck or slow termination
-Users have full control to filter and choose which pod statuses to delete.
+Case 2: Pod is owned by a ReplicaSet or ReplicationController (no higher controller)
+RS/RC manages the pod, but no Deployment or DC manages the RS/RC.
 
-Key Challenges & Edge Cases
-1. Pods Recreated After Deletion
-Even after stale pods are deleted by the API, some are immediately recreated due to ownership relationships:
+Action: Pod and RS/RC are both deleted.
 
-Case A: Pods Owned by ReplicaSet or ReplicationController
-Deleting the pod alone is not sufficient.
+Case 3: Pod is owned by ReplicaSet → Deployment
+If the Deployment still has healthy running pods:
 
-ReplicaSets/RCs will automatically reschedule and recreate the pods to maintain desired replica count.
+Skip deletion to avoid breaking the app
 
-Resolution:
+If no other pods are running:
 
-The API includes an option to identify and delete the owning ReplicaSet or RC along with the pods.
+Delete the Deployment
 
-Case B: ReplicaSet/RC Owned by DeploymentConfig (DC)
-If the owner of the ReplicaSet or RC is a DC, the system will regenerate the ReplicaSet and, in turn, the pod.
+Delete the RS
 
-Resolution:
+Delete the pod
 
-The deletion logic traces the ownership tree:
+Case 4: Multiple stale pods from the same Deployment
+Only one delete operation is triggered for the Deployment.
 
-Pod → RS/RC → DeploymentConfig
+Duplicates are tracked and skipped using in-memory sets.
 
-It prompts the user (in UI or via dry-run) that to stop complete regeneration, the entire tree needs to be deleted, starting from the DC.
+Avoids noisy Kubernetes errors like 404 Not Found
 
-Ownership Tracing Hierarchy
-plaintext
+ Key Challenges & Bottlenecks
+1. Complex Ownership Chains
+In Kubernetes, pods are often part of a chain:
+
+scss
 Copy
 Edit
-Pod
-└── ReplicaSet or ReplicationController
-    └── DeploymentConfig (if applicable)
-Ownership metadata is retrieved using metadata.ownerReferences.
+Pod → ReplicaSet → Deployment (or Pod → RC → DC)
+The API navigates this chain automatically, so users don’t have to.
 
-Risk Mitigation and Environment Segregation
-Environment Filtering
-To ensure production environments remain untouched, a filtering mechanism is applied:
-
-Resources are only considered if they are tagged with env_type: non-prod.
-
-Known Limitation
-All environments except production are currently tagged as non-prod.
-
-This makes it difficult to differentiate between Dev, QA, UAT, SIT, etc.
-
-Risk Implications:
-A generic cleanup in non-prod environments might unintentionally affect critical testing workloads.
-
-For example, QA or UAT environments, which are typically more stable and require persistence, might be impacted.
-
-Recommendations & Next Steps
-Short-Term Improvements
-Enhance API to visualize ownership chains so users understand what will get recreated post-deletion.
-
-Add a confirmation prompt before deleting owners like DC/RC/RS.
-
-Mid-Term Strategy
-Improve environment tagging:
-
-Tag projects more granularly with env_type: dev, env_type: qa, env_type: uat, etc.
-
-Introduce namespace-specific filters in the UI and API to allow selective targeting.
-
-Long-Term Enhancements
-Integrate with GitOps or config management tools to:
-
-Reconcile deleted DCs automatically (if needed).
-
-Ensure audit logs and traceability.
-
-Sample Workflow Diagram
-plaintext
-Copy
-Edit
-User selects pods to delete based on status
-        │
-        ├── Check if Pod has ownerReferences
-        │     └── If ReplicaSet/RC found
-        │             └── Check if RS/RC is owned by DeploymentConfig
-        │                     └── Prompt user to confirm deletion of higher-level owner
-        └── Delete the pod(s) and selected owners
-Conclusion
-The stale resource pruner provides a powerful, controlled interface to clean up unused workloads in OpenShift. However, due to the complexity of resource ownership and tagging limitations in non-prod environments, caution is essential to prevent unintended deletions. Future enhancements aim to provide better visibility, control, and granularity in targeting stale resources.
-
-
-
-✅ Step-by-step:
-	1.	Get the ReplicaSet that owns the problematic pod.
-	2.	Check if that ReplicaSet is owned by a Deployment.
-	3.	If yes:
-	•	Fetch all ReplicaSets owned by the same Deployment.
-	•	Check if any of them have running pods.
-	•	Case 1: There are running pods (healthy older version, for example):
-	•	✅ Delete the problematic pod and its ReplicaSet only.
-	•	❌ Do not delete the Deployment, because it’s serving healthy traffic.
-	•	Case 2: There are no running pods under any ReplicaSet:
-	•	✅ Delete the Deployment, ReplicaSet, and pod.
-	•	Deployment is effectively inactive — safe to remove.
-	4.	If the ReplicaSet is not owned by a Deployment:
-	•	✅ Just delete the pod (standalone or orphaned ReplicaSet).
