@@ -290,3 +290,27 @@ def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_nam
             except Exception as e:
                 logger.warning(f"Failed to delete Deployment {deployment_name}: {e}")
             return
+
+...............
+
+import time
+
+def timeit(logger=None, label=""):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            result = func(*args, **kwargs)
+            end = time.time()
+            msg = f"{label or func.__name__} took {end - start:.2f} seconds"
+            if logger:
+                logger.info(msg)
+            else:
+                print(msg)
+            return result
+        return wrapper
+    return decorator
+
+
+@timeit(logger=logger, label="remove_image_identifier")
+
+
