@@ -77,4 +77,105 @@ Copy
 Edit
 Pod → ReplicaSet → Deployment (or Pod → RC → DC)
 The API navigates this chain automatically, so users don’t have to.
+------------------------------------------------
 
+Stale Image Pruner API: Performance Improvement Strategy
+
+🧭 Overview
+
+The Stale Image Pruner API is responsible for listing and deleting container images (with all tags) from JFrog Artifactory and identifying all OpenShift resources using those images. While functional, the current implementation suffers from significant performance issues, especially when handling large workloads across clusters.
+
+This document outlines the performance bottlenecks observed, their root causes, and a detailed optimization plan to address them.
+
+⚠️ Current Bottlenecks
+
+1. Frequent and Redundant API Calls
+
+Issue: The API repeatedly queries both JFrog and OpenShift for image and pod details, often for the same image or pod.
+
+Impact: Excessive latency and unnecessary network traffic.
+
+2. Re-authentication to OpenShift
+
+Issue: The OpenShift authentication token and kubeconfig are fetched multiple times per request.
+
+Impact: Wastes processing time and introduces redundant operations.
+
+3. Linear Resource Traversal in OpenShift
+
+Issue: Each pod is individually evaluated to determine its associated RS/DC or Deployment, and the loop is repeated for each image.
+
+Impact: Results in high latency for clusters with many resources.
+
+🔍 Observations from Logs
+
+Multiple API hits to JFrog per image and tag.
+
+Frequent fetching of the same OpenShift pod, RS, and deployment info.
+
+OpenShift login succeeds quickly, but image-to-resource matching dominates time.
+
+✅ Optimization Strategies
+
+1. Batch Resource Fetching
+
+What to do:
+
+Fetch all pods, RS, RC, Deployments, and DCs upfront at once.
+
+Store these in-memory dictionaries for quick local access.
+
+Benefits:
+
+Drastically reduces redundant API calls.
+
+Enables rapid lookup and filtering.
+
+Sample Code Logic:
+
+all_pods = list_all_pods()
+all_rs = list_all_replicasets()
+# Then access via dict: (namespace, name) as key
+pod_map = {(pod.metadata.namespace, pod.metadata.name): pod for pod in all_pods}
+
+2. Threading for Parallel Execution
+
+What to do:
+
+Use ThreadPoolExecutor to parallelize:
+
+Image-to-pod usage checks
+
+Pod-to-controller resolution
+
+Benefits:
+
+Utilizes I/O waiting time efficiently
+
+Reduces total duration by parallel processing
+
+3. Local Caching of Ownership Chains
+
+What to do:
+
+Cache pod-to-owner mapping during execution:
+
+owner_cache["pod-namespace"] = { "rs": "rs-name", "deployment": "deployment-name" }
+
+Benefits:
+
+Avoids recomputation for pods sharing same owners.
+
+Streamlines dependency tracing.
+
+4. Consolidate OpenShift Login / Kubeconfig Fetching
+
+What to do:
+
+Authenticate once at the beginning and reuse token and config.
+
+Benefits:
+
+Prevents repeated authentication logic.
+
+Speeds up API calls that follow.
