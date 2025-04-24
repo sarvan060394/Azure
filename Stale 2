@@ -314,3 +314,147 @@ def timeit(logger=None, label=""):
 @timeit(logger=logger, label="remove_image_identifier")
 
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!-------Working code------!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+def process_stale_pods(k8s_client, stale_pods):
+    dynclient = DynamicClient(k8s_client)
+    pods_api = dynclient.resources.get(api_version="v1", kind="Pod")
+    rs_api = dynclient.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    dep_api = dynclient.resources.get(api_version="apps/v1", kind="Deployment")
+    rc_api = dynclient.resources.get(api_version="v1", kind="ReplicationController")
+    dc_api = dynclient.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+
+    deleted = []
+    deleted_deployments = set()
+    deleted_deploymentconfigs = set()
+
+    for pod in stale_pods:
+        namespace = pod["namespace"]
+        name = pod["name"]
+        try:
+            pod_obj = pods_api.get(namespace=namespace, name=name)
+            owners = pod_obj.metadata.ownerReferences or []
+
+            if not owners:
+                try:
+                    pods_api.delete(namespace=namespace, name=name)
+                    logger.info(f"Deleted pod {name} in {namespace} with no owners.")
+                    deleted.append({"pod": name, "namespace": namespace})
+                except ApiException as e:
+                    if e.status == 404:
+                        logger.warning(f"Pod {name} in {namespace} already deleted.")
+                    else:
+                        logger.error(f"Failed to delete pod {name} in {namespace}: {str(e)}")
+                continue
+
+            for owner in owners:
+                kind = owner.kind
+                owner_name = owner.name
+
+                if kind == "ReplicaSet":
+                    rs_obj = rs_api.get(namespace=namespace, name=owner_name)
+                    handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, name, rs_obj, deleted, deleted_deployments)
+
+                elif kind == "ReplicationController":
+                    rc_obj = rc_api.get(namespace=namespace, name=owner_name)
+                    handle_replication_controller(k8s_client, rc_api, dc_api, pods_api, namespace, name, rc_obj, deleted, deleted_deploymentconfigs)
+
+        except Exception as e:
+            logger.error(f"Error handling pod {name} in {namespace}: {e}")
+
+
+def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_name, rs_obj, deleted, deleted_deployments):
+    rs_name = rs_obj.metadata.name
+    rs_owners = rs_obj.metadata.ownerReferences or []
+
+    if not rs_owners:
+        try:
+            rs_api.delete(namespace=namespace, name=rs_name)
+            logger.info(f"Deleted orphaned RS {rs_name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete RS {rs_name}: {e}")
+
+        try:
+            pods_api.delete(namespace=namespace, name=pod_name)
+            logger.info(f"Deleted pod {pod_name} owned by orphaned RS {rs_name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete pod {pod_name}: {e}")
+
+        deleted.append({"replicaset": rs_name, "pod": pod_name, "namespace": namespace})
+        return
+
+    for owner in rs_owners:
+        if owner.kind == "Deployment":
+            deployment_name = owner.name
+
+            if deployment_name in deleted_deployments:
+                logger.info(f"Deployment {deployment_name} already deleted earlier. Skipping.")
+                return
+
+            if has_running_pods(k8s_client, namespace, deployment_name, "apps/v1", "Deployment"):
+                logger.info(f"Deployment {deployment_name} has other healthy pods. Skipping deletion.")
+                return
+
+            try:
+                dep_api.delete(namespace=namespace, name=deployment_name)
+                logger.info(f"Deleted Deployment {deployment_name}, which removed RS {rs_name} and pod {pod_name}")
+                deleted.append({
+                    "deployment": deployment_name,
+                    "replicaset": rs_name,
+                    "pod": pod_name,
+                    "namespace": namespace
+                })
+                deleted_deployments.add(deployment_name)
+            except Exception as e:
+                logger.warning(f"Failed to delete Deployment {deployment_name}: {e}")
+            return
+
+
+def handle_replication_controller(k8s_client, rc_api, dc_api, pods_api, namespace, pod_name, rc_obj, deleted, deleted_deploymentconfigs):
+    rc_name = rc_obj.metadata.name
+    rc_owners = rc_obj.metadata.ownerReferences or []
+
+    if not rc_owners:
+        try:
+            rc_api.delete(namespace=namespace, name=rc_name)
+            logger.info(f"Deleted orphaned RC {rc_name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete RC {rc_name}: {e}")
+
+        try:
+            pods_api.delete(namespace=namespace, name=pod_name)
+            logger.info(f"Deleted pod {pod_name} owned by orphaned RC {rc_name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete pod {pod_name}: {e}")
+
+        deleted.append({"replicationcontroller": rc_name, "pod": pod_name, "namespace": namespace})
+        return
+
+    for owner in rc_owners:
+        if owner.kind == "DeploymentConfig":
+            dc_name = owner.name
+
+            if dc_name in deleted_deploymentconfigs:
+                logger.info(f"DeploymentConfig {dc_name} already deleted earlier. Skipping.")
+                return
+
+            if has_running_pods(k8s_client, namespace, dc_name, "apps.openshift.io/v1", "DeploymentConfig"):
+                logger.info(f"DeploymentConfig {dc_name} has other healthy pods. Skipping deletion.")
+                return
+
+            try:
+                dc_api.delete(namespace=namespace, name=dc_name)
+                logger.info(f"Deleted DeploymentConfig {dc_name}, which removed RC {rc_name} and pod {pod_name}")
+                deleted.append({
+                    "deploymentconfig": dc_name,
+                    "replicationcontroller": rc_name,
+                    "pod": pod_name,
+                    "namespace": namespace
+                })
+                deleted_deploymentconfigs.add(dc_name)
+            except Exception as e:
+                logger.warning(f"Failed to delete DeploymentConfig {dc_name}: {e}")
+            return
+
+
+
