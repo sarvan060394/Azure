@@ -179,3 +179,63 @@ Benefits:
 Prevents repeated authentication logic.
 
 Speeds up API calls that follow.
+
+
+
+------
+
+
+Description:
+Currently, the image pruner APIs fetch tokens for OpenShift and Artifactory with every request. To improve efficiency and reduce authentication overhead, implement a caching mechanism to store these tokens and reuse them until expiry. The cache should be aware of token TTL and refresh tokens as needed.
+
+⸻
+
+Acceptance Criteria (AC)
+
+Given the image pruner app requires authentication with OpenShift and Artifactory,
+When a token is already cached and still valid,
+Then the API should use the cached token instead of generating or fetching a new one.
+
+
+Design token cache structure with TTL tracking
+	•	Define a simple in-memory cache (e.g., dictionary with token and expiry time)
+	•	Plan for separate cache entries for OpenShift and Artifactory
+	2.	Implement OpenShift token caching logic
+	•	Fetch and cache token with associated TTL
+	•	Reuse token until TTL expires, then refresh
+
+---------------
+
+To improve performance and reduce redundant API calls, implement a caching mechanism within the image pruner application that stores results from OpenShift and Artifactory queries. Cached data should be used wherever possible during API responses, and the cache should be configurable and refreshable.
+
+⸻
+
+Acceptance Criteria (AC)
+
+Given the image pruner app interacts with OpenShift and Artifactory,
+When the API is invoked repeatedly for listing images or resources,
+Then the app should serve results from the cache instead of making fresh calls every time,
+And the cache should support TTL (Time To Live) and refresh mechanisms.
+
+⸻
+
+Definition of Done (DoD)
+	•	In-memory or persistent caching implemented for both OpenShift and Artifactory API data
+	•	Cache is configurable (e.g., TTL, max size, refresh interval)
+	•	Cache is used for listing APIs, with fallback to live calls when needed
+	•	Cache refreshes after TTL expiry or via manual trigger
+	•	Logging in place to indicate when cache hits or misses occur
+	•	Documentation updated for cache configuration and behavior
+
+⸻
+
+Sub-Tasks
+	1.	Design caching strategy and select cache backend (e.g., in-memory, Redis)
+	•	Decide on the caching layer (e.g., cachetools, functools.lru_cache, or Redis)
+	•	Identify which data from OpenShift and Artifactory should be cached
+	2.	Implement caching for Artifactory image list API
+	•	Store list of repositories and tags per image
+	•	Ensure proper cache invalidation and TTL
+	3.	Implement caching for OpenShift pod/deployment image usage
+	•	Cache pod and deployment metadata for each namespace
+	•	Include filtering logic for dry-run and deletion paths
