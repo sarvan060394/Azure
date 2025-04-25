@@ -241,7 +241,7 @@ def process_stale_pods(k8s_client, stale_pods):
         except Exception as e:
             logger.error(f"Error handling pod {name} in {namespace}: {e}")
 
-
+---------------- currently I have this --------------------
 def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_name, rs_obj, deleted, deleted_deployments):
     rs_name = rs_obj.metadata.name
     rs_owners = rs_obj.metadata.ownerReferences or []
@@ -590,4 +590,155 @@ def handle_replication_controller(k8s_client, rc_api, dc_api, pods_api, namespac
             else:
                 logger.error(f"Error handling DeploymentConfig {dc_name}: {e}")
 
+------------------------------------- trying  dry run 1---------------------
+
+def process_stale_pods(k8s_client, stale_pods, dry_run=False):
+    pods_api = dynclient.resources.get(api_version="v1", kind="Pod")
+    rs_api = dynclient.resources.get(api_version="apps/v1", kind="ReplicaSet")
+    dep_api = dynclient.resources.get(api_version="apps/v1", kind="Deployment")
+    rc_api = dynclient.resources.get(api_version="v1", kind="ReplicationController")
+    dc_api = dynclient.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+
+    deleted = []
+    deleted_deployments = set()
+    deleted_deploymentconfigs = set()
+
+    for pod in stale_pods:
+        namespace = pod["namespace"]
+        name = pod["name"]
+
+        if any(dc_name in name for dc_name in deleted_deploymentconfigs):
+            logger.info(f"Skipping pod {name} as it belongs to an already deleted DeploymentConfig.")
+            deleted.append({"pod": name, "namespace": namespace, "status": "skipped - part of deleted DeploymentConfig"})
+            continue
+
+        try:
+            pod_obj = pods_api.get(namespace=namespace, name=name)
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(f"Pod {name} in {namespace} not found. Possibly already deleted.")
+            else:
+                logger.error(f"Failed to fetch pod {name} in {namespace}: {e}")
+            continue
+
+        owners = pod_obj.metadata.ownerReferences or []
+
+        if not owners:
+            if dry_run:
+                logger.info(f"[Dry Run] Would delete pod {name} in {namespace} (no owners).")
+                deleted.append({"pod": name, "namespace": namespace, "status": "dry-run"})
+            else:
+                try:
+                    pods_api.delete(namespace=namespace, name=name)
+                    logger.info(f"Deleted pod {name} in {namespace} with no owners.")
+                    deleted.append({"pod": name, "namespace": namespace})
+                except ApiException as e:
+                    if e.status == 404:
+                        logger.warning(f"Pod {name} in {namespace} already deleted.")
+                    else:
+                        logger.error(f"Failed to delete pod {name} in {namespace}: {str(e)}")
+            continue
+
+        for owner in owners:
+            kind = owner.kind
+            owner_name = owner.name
+
+            if kind == "ReplicaSet":
+                try:
+                    rs_obj = rs_api.get(namespace=namespace, name=owner_name)
+                    handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, name,
+                                       rs_obj, deleted, deleted_deployments, dry_run)
+                except ApiException as e:
+                    if e.status == 404:
+                        logger.warning(f"ReplicaSet {owner_name} in {namespace} not found. Possibly already deleted.")
+                    else:
+                        logger.error(f"Failed to fetch ReplicaSet {owner_name} in {namespace}: {e}")
+
+            elif kind == "ReplicationController":
+                try:
+                    rc_obj = rc_api.get(namespace=namespace, name=owner_name)
+                    handle_replication_controller(k8s_client, rc_api, dc_api, pods_api, namespace, name,
+                                                  rc_obj, deleted, deleted_deploymentconfigs, dry_run)
+                except ApiException as e:
+                    if e.status == 404:
+                        logger.warning(f"ReplicationController {owner_name} in {namespace} not found. Possibly already deleted.")
+                    else:
+                        logger.error(f"Failed to fetch ReplicationController {owner_name} in {namespace}: {e}")
+
+    return deleted
+
+def handle_replica_set(k8s_client, rs_api, dep_api, pods_api, namespace, pod_name, rs_obj, deleted, deleted_deployments, dry_run):
+    rs_name = rs_obj.metadata.name
+    rs_owners = rs_obj.metadata.ownerReferences or []
+
+    if not rs_owners:
+        # RS is orphaned → delete RS and pod
+        if dry_run:
+            logger.info(f"[Dry Run] Would delete orphaned RS {rs_name} and its pod {pod_name} in {namespace}")
+        else:
+            try:
+                rs_api.delete(namespace=namespace, name=rs_name)
+                logger.info(f"Deleted orphaned RS {rs_name}")
+            except Exception as e:
+                logger.warning(f"Failed to delete RS {rs_name}: {e}")
+
+            try:
+                pods_api.delete(namespace=namespace, name=pod_name)
+                logger.info(f"Deleted pod {pod_name} owned by orphaned RS {rs_name}")
+            except Exception as e:
+                logger.warning(f"Failed to delete pod {pod_name}: {e}")
+
+        deleted.append({
+            "replicaset": rs_name,
+            "pod": pod_name,
+            "namespace": namespace,
+            "status": "dry-run" if dry_run else "deleted"
+        })
+        return
+
+    for owner in rs_owners:
+        if owner.kind == "Deployment":
+            deployment_name = owner.name
+
+            if deployment_name in deleted_deployments:
+                logger.info(f"Deployment {deployment_name} already deleted earlier. Skipping.")
+                deleted.append({
+                    "deployment": deployment_name,
+                    "replicaset": rs_name,
+                    "pod": pod_name,
+                    "namespace": namespace,
+                    "status": "skipped - already deleted"
+                })
+                return
+
+            if has_running_pods(k8s_client, namespace, deployment_name, "apps/v1", "Deployment"):
+                logger.info(f"Deployment {deployment_name} has other healthy pods. Skipping deletion.")
+                deleted.append({
+                    "deployment": deployment_name,
+                    "replicaset": rs_name,
+                    "pod": pod_name,
+                    "namespace": namespace,
+                    "status": "skipped - healthy pods exist"
+                })
+                return
+
+            # No running pods under this deployment → safe to delete
+            if dry_run:
+                logger.info(f"[Dry Run] Would delete Deployment {deployment_name}, RS {rs_name}, and pod {pod_name} in {namespace}")
+            else:
+                try:
+                    dep_api.delete(namespace=namespace, name=deployment_name)
+                    logger.info(f"Deleted Deployment {deployment_name}, which removed RS {rs_name} and pod {pod_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete Deployment {deployment_name}: {e}")
+
+            deleted.append({
+                "deployment": deployment_name,
+                "replicaset": rs_name,
+                "pod": pod_name,
+                "namespace": namespace,
+                "status": "dry-run" if dry_run else "deleted"
+            })
+            deleted_deployments.add(deployment_name)
+            return
 
