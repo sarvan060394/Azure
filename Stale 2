@@ -839,4 +839,68 @@ def delete_stale_pods_endpoint(
         logger.error(f"Failed to delete stale pods: {str(e)}")
         return {"error": str(e)}
 
+from fastapi import FastAPI, Query
+from pydantic import SecretStr
+from typing import List, Optional
+import logging
+
+app = FastAPI()
+logger = logging.getLogger(__name__)
+
+@app.delete("/delete-stale-pods")
+def delete_stale_pods_endpoint(
+    openshift_cluster_url: str = Query(
+        "https://cluster1.example.com",
+        title="OpenShift Cluster URL",
+        description="Select the OpenShift cluster to connect"
+    ),
+    username: str = Query(
+        "admin",
+        title="Username",
+        description="OpenShift username"
+    ),
+    password: str = Query(
+        ...,  # Required
+        title="Password",
+        description="OpenShift password"
+    ),
+    statuses: List[str] = Query(
+        default=["CrashLoopBackOff", "ImagePullBackOff", "Error"],
+        title="Pod Statuses",
+        description="List of pod statuses to consider as stale"
+    ),
+    namespaces: Optional[List[str]] = Query(
+        default=None,
+        title="Namespaces",
+        description="Optional list of namespaces. Leave empty for all non-prod namespaces."
+    ),
+    dry_run: bool = Query(
+        default=False,
+        title="Dry Run",
+        description="Enable dry run mode to preview actions"
+    )
+):
+    try:
+        # Get Kubernetes client
+        k8s_client = get_openshift_client(openshift_cluster_url, username, password)
+        dyn_client = DynamicClient(k8s_client)
+
+        # Get namespaces (if not provided)
+        if namespaces is None:
+            all_projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project").get()
+            namespaces = [
+                proj.metadata.name for proj in all_projects.items
+                if is_non_prod_namespace(k8s_client, proj.metadata.name)
+            ]
+
+        # List and delete stale pods
+        stale_pods = list_stale_pods(k8s_client, namespaces, statuses)
+        deleted = process_stale_pods(k8s_client, stale_pods, dry_run=dry_run)
+
+        return {"dry_run": dry_run, "deleted": deleted}
+
+    except Exception as e:
+        logger.error(f"Failed to delete stale pods: {str(e)}")
+        return {"error": str(e)}
+
 
