@@ -32,3 +32,72 @@ def get_cached_dyn_client(k8s_client):
     with cache_lock:
         dyn_client_cache[key] = dyn_client
     return dyn_client
+--------------------------------------------------------------
+from cachetools import TTLCache
+from kubernetes import client, config
+from dynaconf import settings  # Assuming you're using some config
+from kubernetes.dynamic import DynamicClient
+
+# Define cache
+k8s_client_cache = TTLCache(maxsize=100, ttl=3600)
+dyn_client_cache = TTLCache(maxsize=100, ttl=3600)
+
+def get_k8s_client(username, password, cluster_url):
+    key = f"{username}:{cluster_url}"
+    if key in k8s_client_cache:
+        print(f"Using cached k8s client for key: {key}")
+        return k8s_client_cache[key]
+
+    try:
+        # Authenticate and create k8s client
+        configuration = client.Configuration()
+        configuration.host = cluster_url
+        configuration.verify_ssl = False
+        configuration.username = username
+        configuration.password = password
+        api_client = client.ApiClient(configuration)
+
+        # Make a simple call to check if login is valid
+        v1 = client.VersionApi(api_client)
+        version = v1.get_code()
+
+        print(f"Login successful! Cluster version: {version.git_version}")
+
+        # Only update cache if login is successful
+        k8s_client_cache[key] = api_client
+        print(f"Updated k8s_client_cache: key={key}, value={api_client}")
+        return api_client
+
+    except Exception as e:
+        print(f"Failed to login to OpenShift: {e}")
+        if key in k8s_client_cache:
+            del k8s_client_cache[key]  # Remove bad cache
+            print(f"Removed invalid cache for key: {key}")
+        raise e
+
+def get_dyn_client(username, password, cluster_url):
+    key = f"{username}:{cluster_url}"
+    if key in dyn_client_cache:
+        print(f"Using cached dyn client for key: {key}")
+        return dyn_client_cache[key]
+
+    try:
+        k8s_client = get_k8s_client(username, password, cluster_url)
+        dyn_client = DynamicClient(k8s_client)
+
+        # Try a simple call to check if dyn client works
+        v1_pods = dyn_client.resources.get(api_version='v1', kind='Pod')
+
+        print("Dynamic client initialized successfully!")
+
+        dyn_client_cache[key] = dyn_client
+        print(f"Updated dyn_client_cache: key={key}, value={dyn_client}")
+        return dyn_client
+
+    except Exception as e:
+        print(f"Failed to initialize dynamic client: {e}")
+        if key in dyn_client_cache:
+            del dyn_client_cache[key]
+            print(f"Removed invalid dyn client cache for key: {key}")
+        raise e
+
