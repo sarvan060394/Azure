@@ -1,0 +1,34 @@
+from cachetools import TTLCache
+import threading
+
+# Create caches
+k8s_client_cache = TTLCache(maxsize=100, ttl=300)    # 5 minutes TTL
+dyn_client_cache = TTLCache(maxsize=100, ttl=300)    # 5 minutes TTL
+
+# Lock for thread-safety
+cache_lock = threading.Lock()
+
+def get_cached_openshift_client(openshift_cluster_url, username, password):
+    key = f"{openshift_cluster_url}-{username}"
+    with cache_lock:
+        if key in k8s_client_cache:
+            return k8s_client_cache[key]
+
+    # If not in cache, create and store
+    k8s_client = get_openshift_client(openshift_cluster_url, username, password)
+    if k8s_client:
+        with cache_lock:
+            k8s_client_cache[key] = k8s_client
+    return k8s_client
+
+def get_cached_dyn_client(k8s_client):
+    key = id(k8s_client)  # Unique id of the k8s client object
+    with cache_lock:
+        if key in dyn_client_cache:
+            return dyn_client_cache[key]
+
+    # If not in cache, create and store
+    dyn_client = DynamicClient(k8s_client)
+    with cache_lock:
+        dyn_client_cache[key] = dyn_client
+    return dyn_client
