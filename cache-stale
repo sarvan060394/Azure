@@ -100,4 +100,34 @@ def get_dyn_client(username, password, cluster_url):
             del dyn_client_cache[key]
             print(f"Removed invalid dyn client cache for key: {key}")
         raise e
+------------------  Artifactory ----------------
+
+registry_token_cache = {}
+
+def get_cached_registry_auth_token(registry_url, username, password):
+    key = f"{registry_url}:{username}"
+
+    try:
+        if key in registry_token_cache:
+            logger.info(f"Using cached registry token for key: {key}")
+            return registry_token_cache[key]
+        
+        logger.info(f"No cached token found for key: {key}, fetching new one...")
+        registry_token = get_registry_auth_token(registry_url, username, password)
+
+        if registry_token:
+            registry_token_cache[key] = registry_token
+            logger.info(f"Cached registry token for key: {key}")
+            return registry_token
+        else:
+            logger.error(f"Failed to retrieve valid registry token for {registry_url}.")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error fetching registry token for {registry_url}: {e}")
+        if key in registry_token_cache:
+            logger.info(f"Removing invalid cached token for key: {key}")
+            del registry_token_cache[key]
+        raise e
+
 
