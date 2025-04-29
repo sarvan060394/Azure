@@ -1,0 +1,110 @@
+import asyncio
+import aiohttp
+from typing import Dict, Optional, Union, List
+from fastapi import HTTPException
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def fetch_manifest(session, registry_url, image_name, tag, registry_token):
+    manifest_api_url = f"https://{registry_url}/v2/{image_name}/manifests/{tag}"
+    headers = {
+        "Accept": "application/vnd.docker.distribution.manifest.v2+json",
+        "Authorization": f"Bearer {registry_token}"
+    }
+    async with session.get(manifest_api_url, headers=headers, ssl=False) as resp:
+        if resp.status != 200:
+            logger.warning(f"Failed to fetch manifest for tag: {tag}")
+            return tag, None
+        return tag, await resp.json()
+
+async def get_image_creation_date(registry_url, image_name, tag, registry_token):
+    # Dummy placeholder for actual implementation
+    # Replace this with your own `get_image_creation_date` logic
+    return "2024-04-01T00:00:00Z"
+
+async def get_image_digests_with_creation_dates_parallel(
+    registry_url: str,
+    image_name: str,
+    registry_token: str,
+    keep_tags: Union[List[str], None],
+    tag_name: Optional[str] = None
+) -> Dict:
+
+    async with aiohttp.ClientSession() as session:
+        # Step 1: Get all tags
+        tags_url = f"https://{registry_url}/v2/{image_name}/tags/list"
+        headers = {
+            "Authorization": f"Bearer {registry_token}"
+        }
+        async with session.get(tags_url, headers=headers, ssl=False) as resp:
+            if resp.status != 200:
+                raise HTTPException(status_code=404, detail="Image tags not found")
+            tags_list = (await resp.json()).get("tags", [])
+
+        # Step 2: Validate input tags
+        if tag_name:
+            if "," in tag_name:
+                split_tags = tag_name.split(",")
+                for tag in split_tags:
+                    if tag not in tags_list:
+                        raise HTTPException(status_code=404, detail=f"Image with tag {image_name}:{tag} not found.")
+            elif tag_name not in tags_list:
+                raise HTTPException(status_code=404, detail=f"Image with tag {image_name}:{tag_name} not found.")
+
+        # Step 3: Normalize keep_tags
+        if isinstance(keep_tags, list):
+            new_keep_tags = []
+            for item in keep_tags:
+                if isinstance(item, str) and "," in item:
+                    new_keep_tags.extend(item.split(","))
+                else:
+                    new_keep_tags.extend([item])
+            keep_tags = new_keep_tags
+        else:
+            logger.info(f"keep_tags is not a list: {keep_tags}")
+            keep_tags = []
+
+        # Step 4: Process tags with logic & parallel fetch
+        async def process_tag(tag):
+            if tag_name:
+                if "," in tag_name:
+                    if tag not in tag_name.split(","):
+                        return None
+                elif tag != tag_name:
+                    return None
+
+            if tag in keep_tags:
+                logger.info(f"Skipping tag {tag} as it is in the skip list. tag: {tag}, skip_tags: {keep_tags}")
+                return None
+
+            tag, manifest = await fetch_manifest(session, registry_url, image_name, tag, registry_token)
+            if not manifest:
+                return None
+
+            if "config" in manifest and "digest" in manifest["config"]:
+                image_identifier = manifest["config"]["digest"]
+                creation_date = await get_image_creation_date(registry_url, image_name, tag, registry_token)
+                if creation_date:
+                    return tag, {
+                        "image_identifier": image_identifier,
+                        "creation_date": creation_date
+                    }
+                else:
+                    logger.warning(f"Failed to retrieve creation date for image: {image_name}:{tag}")
+            else:
+                logger.warning(f"Image config or digest not found in manifest for {image_name}:{tag}")
+            return None
+
+        results = await asyncio.gather(*(process_tag(tag) for tag in tags_list))
+        tags_with_data = {tag: data for tag, data in results if tag and data}
+
+        if not tags_with_data:
+            logger.warning(f"No images found for {image_name} with tag {tag_name}.")
+            return {}
+
+        return tags_with_data
+--------------------------------
+  image_data = await get_image_digests_with_creation_dates_parallel(
+        registry_url, image_name, registry_token, keep_tags, tag_name
+    )
