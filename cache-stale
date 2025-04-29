@@ -130,4 +130,32 @@ def get_cached_registry_auth_token(registry_url, username, password):
             del registry_token_cache[key]
         raise e
 
+------------/- time decorator-------
 
+import time
+import functools
+
+def async_timeit(func):
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = await func(*args, **kwargs)
+        end = time.perf_counter()
+        logger.info(f"{func.__name__} took {end - start:.2f} seconds")
+        return result
+    return wrapper
+
+import time
+
+@router.get("/list-stale-images/")
+async def list_stale_images(...):
+    start = time.perf_counter()
+    
+    # ... your API logic here ...
+    
+    end = time.perf_counter()
+    logger.info(f"Total API time: {end - start:.2f} seconds")
+    return {
+        "execution_time_seconds": round(end - start, 2),
+        # ... rest of response ...
+    }
