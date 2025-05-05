@@ -109,7 +109,7 @@ async def get_image_digests_with_creation_dates_parallel(
         registry_url, image_name, registry_token, keep_tags, tag_name
     )
 
----------------------------*******Openshift process optimization****-------------
+---------------------------*******Openshift process optimization****--************This is working****-----------
 
 
     if stale_images:
@@ -205,4 +205,62 @@ def process_namespace(k8s_client, v1_deployments, v1_pods, namespace: str, all_s
     deployments = match_stale_images_in_deployments(v1_deployments, namespace, all_stale_images)
     pods = match_stale_images_in_pods(v1_pods, namespace, all_stale_images)
     return deployments, pods
+
+------------###### apply parallel processing on it ####------------
+
+async def process_namespace(namespace: str, v1_pods, v1_deployments, all_stale_images: List[str]) -> Tuple[List[Dict], List[Dict]]:
+    matched_deployments = []
+    matched_pods = []
+
+    try:
+        deployments = await v1_deployments.get(namespace=namespace)
+        for deployment in deployments.items:
+            for container in deployment.spec.template.spec.containers:
+                if container.image in all_stale_images:
+                    matched_deployments.append({
+                        "namespace": namespace,
+                        "deployment_name": deployment.metadata.name,
+                        "image": container.image
+                    })
+
+        pods = await v1_pods.get(namespace=namespace)
+        for pod in pods.items:
+            for container in pod.spec.containers:
+                if container.image in all_stale_images:
+                    matched_pods.append({
+                        "namespace": namespace,
+                        "pod_name": pod.metadata.name,
+                        "image": container.image
+                    })
+    except Exception as e:
+        logger.error(f"Error processing namespace {namespace}: {e}")
+
+    return matched_deployments, matched_pods
+
+    if filter_namespace:
+        filter_namespaces = [ns.strip() for ns in filter_namespace.split(",")]
+    else:
+        filter_namespaces = None
+
+    # Determine final list of namespaces
+    target_namespaces = []
+    for project in projects:
+        ns = project.metadata.name
+        if filter_namespaces:
+            if ns not in filter_namespaces:
+                continue
+        if is_non_prod_namespace(k8s_client, ns):
+            target_namespaces.append(ns)
+
+    tasks = [
+        process_namespace(ns, v1_pods, v1_deployments, all_stale_images)
+        for ns in target_namespaces
+    ]
+    results = await asyncio.gather(*tasks)
+
+    matched_deployments = []
+    matched_pods = []
+    for deployments, pods in results:
+        matched_deployments.extend(deployments)
+        matched_pods.extend(pods)
 
