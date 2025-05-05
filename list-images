@@ -208,59 +208,60 @@ def process_namespace(k8s_client, v1_deployments, v1_pods, namespace: str, all_s
 
 ------------###### apply parallel processing on it ####------------
 
-async def process_namespace(namespace: str, v1_pods, v1_deployments, all_stale_images: List[str]) -> Tuple[List[Dict], List[Dict]]:
+    # Build list of namespaces to check
+    filter_ns_list = [ns.strip() for ns in filter_namespace.split(",")] if filter_namespace else None
+    loop = asyncio.get_running_loop()
+    namespaces = await loop.run_in_executor(executor, get_namespace_list, projects, filter_ns_list, k8s_client)
+
     matched_deployments = []
     matched_pods = []
 
-    try:
-        deployments = await v1_deployments.get(namespace=namespace)
-        for deployment in deployments.items:
-            for container in deployment.spec.template.spec.containers:
-                if container.image in all_stale_images:
-                    matched_deployments.append({
-                        "namespace": namespace,
-                        "deployment_name": deployment.metadata.name,
-                        "image": container.image
-                    })
+    for ns in namespaces:
+        deployments = await loop.run_in_executor(executor, get_deployments_in_namespace, v1_deployments, ns)
+        if deployments:
+            for deployment in deployments.items:
+                for container in deployment.spec.template.spec.containers:
+                    if container.image in all_stale_images:
+                        matched_deployments.append({
+                            "namespace": ns,
+                            "deployment_name": deployment.metadata.name,
+                            "image": container.image
+                        })
 
-        pods = await v1_pods.get(namespace=namespace)
-        for pod in pods.items:
-            for container in pod.spec.containers:
-                if container.image in all_stale_images:
-                    matched_pods.append({
-                        "namespace": namespace,
-                        "pod_name": pod.metadata.name,
-                        "image": container.image
-                    })
-    except Exception as e:
-        logger.error(f"Error processing namespace {namespace}: {e}")
+        pods = await loop.run_in_executor(executor, get_pods_in_namespace, v1_pods, ns)
+        if pods:
+            for pod in pods.items:
+                for container in pod.spec.containers:
+                    if container.image in all_stale_images:
+                        matched_pods.append({
+                            "namespace": ns,
+                            "pod_name": pod.metadata.name,
+                            "image": container.image
+                        })
 
-    return matched_deployments, matched_pods
-
-    if filter_namespace:
-        filter_namespaces = [ns.strip() for ns in filter_namespace.split(",")]
-    else:
-        filter_namespaces = None
-
-    # Determine final list of namespaces
-    target_namespaces = []
+def get_namespace_list(projects, filter_namespaces: Optional[List[str]], k8s_client):
+    namespaces = []
     for project in projects:
         ns = project.metadata.name
-        if filter_namespaces:
-            if ns not in filter_namespaces:
-                continue
+        if filter_namespaces and ns not in filter_namespaces:
+            continue
         if is_non_prod_namespace(k8s_client, ns):
-            target_namespaces.append(ns)
+            namespaces.append(ns)
+    return namespaces
 
-    tasks = [
-        process_namespace(ns, v1_pods, v1_deployments, all_stale_images)
-        for ns in target_namespaces
-    ]
-    results = await asyncio.gather(*tasks)
 
-    matched_deployments = []
-    matched_pods = []
-    for deployments, pods in results:
-        matched_deployments.extend(deployments)
-        matched_pods.extend(pods)
+def get_deployments_in_namespace(v1_deployments, namespace):
+    try:
+        return v1_deployments.get(namespace=namespace)
+    except Exception as e:
+        logger.error(f"Failed to get deployments in {namespace}: {e}")
+        return None
+
+
+def get_pods_in_namespace(v1_pods, namespace):
+    try:
+        return v1_pods.get(namespace=namespace)
+    except Exception as e:
+        logger.error(f"Failed to get pods in {namespace}: {e}")
+        return None
 
