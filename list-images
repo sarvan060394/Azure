@@ -108,3 +108,101 @@ async def get_image_digests_with_creation_dates_parallel(
   image_data = await get_image_digests_with_creation_dates_parallel(
         registry_url, image_name, registry_token, keep_tags, tag_name
     )
+
+---------------------------*******Openshift process optimization****-------------
+
+
+    if stale_images:
+        try:
+            v1_pods, v1_deployments, projects = get_kubesconfig(k8s_client)
+        except Exception as e:
+            logger.error(f"Failed to get OpenShift configurations: {e}")
+            return {"message": "Failed to retrieve OpenShift configurations"}
+
+        try:
+            target_namespaces = get_target_namespaces(k8s_client, projects, filter_namespace)
+        except Exception as e:
+            logger.error(f"Failed to determine target namespaces: {e}")
+            return {"message": "Failed to filter target namespaces"}
+
+        for namespace in target_namespaces:
+            try:
+                deployments, pods = process_namespace(
+                    k8s_client, v1_deployments, v1_pods, namespace, all_stale_images
+                )
+                matched_deployments.extend(deployments)
+                matched_pods.extend(pods)
+            except Exception as e:
+                logger.error(f"Unexpected error processing namespace {namespace}: {e}")
+
+    return {
+        "stale_images": stale_images,
+        "matched_deployments": matched_deployments,
+        "matched_pods": matched_pods
+    }
+
+def get_target_namespaces(k8s_client, projects, filter_namespace: Optional[str]) -> List[str]:
+    if filter_namespace:
+        provided_namespaces = [ns.strip() for ns in filter_namespace.split(",")]
+        logger.info(f"User provided namespaces: {provided_namespaces}")
+        return [
+            ns for ns in provided_namespaces
+            if is_non_prod_namespace(k8s_client, ns)
+        ]
+    else:
+        all_ns = []
+        for project in projects:
+            ns = project.metadata.name
+            if is_non_prod_namespace(k8s_client, ns):
+                all_ns.append(ns)
+        logger.info(f"Discovered non-prod namespaces: {all_ns}")
+        return all_ns
+
+
+def match_stale_images_in_deployments(v1_deployments, namespace: str, all_stale_images: List[str]) -> List[dict]:
+    matches = []
+    try:
+        deployments = v1_deployments.get(namespace=namespace)
+        if not deployments or not deployments.items:
+            logger.info(f"No deployments found in namespace {namespace}")
+            return matches
+        for deployment in deployments.items:
+            for container in deployment.spec.template.spec.containers:
+                if container.image in all_stale_images:
+                    match = {
+                        "namespace": namespace,
+                        "deployment_name": deployment.metadata.name,
+                        "image": container.image
+                    }
+                    matches.append(match)
+                    logger.info(f"Matched stale image in deployment: {match}")
+    except Exception as e:
+        logger.warning(f"Failed to get deployments in namespace {namespace}: {e}")
+    return matches
+
+
+def match_stale_images_in_pods(v1_pods, namespace: str, all_stale_images: List[str]) -> List[dict]:
+    matches = []
+    try:
+        pods = v1_pods.get(namespace=namespace)
+        for pod in pods.items:
+            for container in pod.spec.containers:
+                if container.image in all_stale_images:
+                    match = {
+                        "namespace": namespace,
+                        "pod_name": pod.metadata.name,
+                        "image": container.image
+                    }
+                    matches.append(match)
+                    logger.info(f"Matched stale image in pod: {match}")
+    except Exception as e:
+        logger.warning(f"Failed to get pods in namespace {namespace}: {e}")
+    return matches
+
+
+def process_namespace(k8s_client, v1_deployments, v1_pods, namespace: str, all_stale_images: List[str]) -> Tuple[List[dict], List[dict]]:
+    logger.info(f"Processing namespace: {namespace}")
+    deployments = match_stale_images_in_deployments(v1_deployments, namespace, all_stale_images)
+    pods = match_stale_images_in_pods(v1_pods, namespace, all_stale_images)
+    return deployments, pods
+
