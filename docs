@@ -239,3 +239,38 @@ Sub-Tasks
 	3.	Implement caching for OpenShift pod/deployment image usage
 	•	Cache pod and deployment metadata for each namespace
 	•	Include filtering logic for dry-run and deletion paths
+
+
+As part of the optimization work on the image pruner API, we have:
+	•	Implemented parallel processing for JFrog Artifactory operations to enhance performance and reduce latency.
+	•	Introduced threading for OpenShift-related operations to further improve the API response time.
+	•	Added a caching mechanism to store results from OpenShift and Artifactory, reducing redundant API calls.
+	•	Ensured the cache supports TTL (Time To Live) and provides a refresh mechanism as specified in the Acceptance Criteria.
+
+All Acceptance Criteria have been met and verified.
+
+Next Steps:
+	•	Apply the above optimization to the remaining two APIs.
+	•	Validate image tagging is performed in sequence.
+	•	Explore APIs from the Panther app to interact with the CM Portal.
+	•	Create a dedicated service account for the image pruner.
+
+⸻
+
+Updated Acceptance Criteria (AC):
+	•	Given the image pruner app interacts with OpenShift and Artifactory,
+	•	When the API is invoked repeatedly for listing images or resources,
+	•	Then the app should serve results from the cache instead of making fresh calls every time,
+	•	And the cache should support TTL (Time To Live) and refresh mechanisms.
+	•	Additionally, the app should use parallel processing for Artifactory and threading for OpenShift operations to optimize response time.
+
+⸻
+
+Updated Description (DC):
+
+PLATFORM: Code refactoring and optimization in Image Pruner GET & DELETE APIs.
+
+To improve performance and reduce redundant API calls, we have:
+	•	Implemented a caching mechanism to store results from OpenShift and Artifactory queries.
+	•	Used parallel processing for JFrog Artifactory operations and threading for OpenShift operations to increase API response time.
+	•	Ensured that cached data is configurable and refreshable, supporting TTL and manual refresh triggers.
