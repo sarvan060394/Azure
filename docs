@@ -274,3 +274,37 @@ To improve performance and reduce redundant API calls, we have:
 	•	Implemented a caching mechanism to store results from OpenShift and Artifactory queries.
 	•	Used parallel processing for JFrog Artifactory operations and threading for OpenShift operations to increase API response time.
 	•	Ensured that cached data is configurable and refreshable, supporting TTL and manual refresh triggers.
+
+
+
+
+
+
+----////-----
+
+Acceptance Criteria (AC):
+	•	Given the image pruner DELETE API is responsible for removing images from OpenShift and JFrog Artifactory,
+	•	When the DELETE operation is triggered,
+	•	Then the system should execute JFrog Artifactory deletions using parallel processing for multiple images,
+	•	And OpenShift deletions should be handled using threading to improve concurrency and reduce overall response time,
+	•	And the DELETE operation should remain idempotent and safe even when run in parallel,
+	•	And proper error handling and logging should be implemented to capture any failures during deletion.
+
+⸻
+
+Description (DC):
+
+PLATFORM: Code refactoring and optimization in Image Pruner DELETE APIs.
+
+To improve the performance of the image pruning process, especially when dealing with multiple images or resources, the DELETE APIs have been enhanced to:
+	•	Use parallel processing for handling JFrog Artifactory image deletions, allowing multiple operations to run concurrently.
+	•	Apply threading for OpenShift resource deletions to improve API response time and reduce latency.
+	•	Ensure robustness through appropriate error handling, logging, and retries where applicable.
+
+Implement Parallel Processing for Artifactory DELETE Calls
+	•	Use concurrent.futures or equivalent async/threading tools for efficient deletion.
+	•	Implement retries and failure tracking.
+	4.	Add Threading for OpenShift Deletion Operations
+	•	Introduce threading to handle multiple resource deletions simultaneously.
+	•	Ensure Kubernetes/OpenShift API interactions are thread-safe.
+
