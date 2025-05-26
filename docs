@@ -16,3 +16,9 @@ spec:
           annotations:
             summary: "High HTTP request rate for cubes"
             description: "The cubes app is receiving more than 50 requests per minute in pod {{ $labels.pod }}."
+
+count(
+  kube_pod_status_phase{phase="Running", namespace="cp-1049543"}
+  * on(pod) group_left()
+  kube_pod_info{pod=~"kubes-data-connect-mongodb.*"}
+)
