@@ -46,4 +46,153 @@ count(
   }
 ) == 0
 
+-------------------------------------------------------------------------------------------------
+
+Here is a **Runbook / Standard Operating Procedure (SOP)** to deploy the **Sourcegraph application** in an **OpenShift environment**, based on the image you've provided:
+
+---
+
+# 📘 Runbook: Deploying Sourcegraph on OpenShift
+
+## 🔰 Prerequisites
+
+1. **Access Requirements**:
+
+   * SSH access to the **jump server** (bastion host) with `helm` and `oc` CLI installed.
+   * Access to **OpenShift cluster** via the `oc` CLI.
+   * Access to **Bitbucket** (or other VCS) to clone the Sourcegraph codebase.
+
+2. **Tools Required**:
+
+   * `helm` (version compatible with chart, ideally Helm 3+)
+   * `oc` CLI
+   * `git`
+   * OpenShift account with permissions to create/edit/delete resources.
+
+---
+
+## 📁 Step 1: Prepare Sourcegraph Codebase
+
+1. **Clone the Sourcegraph repository** (from GitHub/Bitbucket):
+
+   ```bash
+   git clone <REPO_URL>
+   ```
+
+   > Replace `<REPO_URL>` with the actual Git repository URL.
+
+2. **Exclude the environment file** (as instructed).
+
+3. **Push the code to Horizon Bitbucket** (your internal repository or mirror):
+
+   ```bash
+   cd <repo-name>
+   git remote add horizon <HORIZON_BITBUCKET_URL>
+   git push horizon main
+   ```
+
+---
+
+## 🚀 Step 2: Access the Jump Server
+
+1. **SSH into the jump server** where `helm` and `oc` CLI are installed:
+
+   ```bash
+   ssh <user>@<jump-server>
+   ```
+
+2. **Clone or pull the latest Sourcegraph code** on the jump server:
+
+   ```bash
+   git clone <HORIZON_BITBUCKET_URL>
+
+   ```
+
+---
+
+## 🔐 Step 3: Log in to OpenShift
+
+1. **Login using `oc` CLI**:
+
+   ```bash
+   oc login <OPENSHIFT_API_URL> --token=<TOKEN>
+   ```
+
+   > Replace `<OPENSHIFT_API_URL>` and `<TOKEN>` with your actual cluster details.
+
+---
+🏷️ Step 4: Select/OpenShift Project (Namespace)
+bash
+Copy
+Edit
+oc project <target-namespace>
+Replace <target-namespace> with the OpenShift namespace where Sourcegraph should be deployed.
+
+Use oc get projects to view available projects.
+
+## 🧹 Step 5: Clean Existing Sourcegraph Resources
+
+Run the following commands to delete any existing Sourcegraph resources in the current namespace:
+
+```bash
+oc delete deployments --all
+oc delete sts --all
+oc delete rs --all
+oc delete pods --all
+```
+
+> ✅ This ensures a clean environment for a fresh deployment.
+
+---
+
+## ⚙️ Step 6: Generate Manifest Using Helm
+
+Run the following `helm template` command to render Kubernetes manifests from the Helm chart:
+
+```bash
+helm template \
+  --values environments/lab/override-lab.yaml \
+  --version <chart-version> \
+  charts/sourcegraph/ \
+  > environments/lab/template-lab.yaml
+```
+Replace <chart-version> with the desired Sourcegraph chart version (e.g., 6.2.2553).
+
+> 📝 This command generates a `template-lab.yaml` file with all the manifests for deployment.
+
+---
+
+## 📦 Step 7: Apply the Manifests
+
+Deploy Sourcegraph using the generated manifest:
+
+bash
+Copy
+Edit
+oc apply -f environments/lab/template-lab.yaml \
+  > environments/lab/apply-output 2>&1
+Output is stored in apply-output for auditing/debugging.
+
+---
+
+## 🔍 Step 7: Validate the Deployment
+
+1. **List all pods** to ensure they are in `Running` state:
+
+   ```bash
+   oc get all
+   ```
+
+2. **Check the route** to verify that Sourcegraph is accessible:
+
+   ```bash
+   oc get route
+   ```
+
+3. **Open the route URL** in your browser and verify Sourcegraph is up and functional.
+
+---
+
+
+
 
