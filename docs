@@ -1,9 +1,18 @@
-Description
-The Panther application provides an API to generate vulnerability reports for container images through the CM portal. These reports may include critical metadata such as image name, tag, and vulnerability severity. Our Image Pruner application (Python-based) is capable of deleting container images based on input criteria. The goal of this story is to explore Panther’s APIs in detail, understand the structure and capabilities of the vulnerability data it provides, and investigate possible integration approaches between Panther and Image Pruner. This exploration will guide future automation to remove vulnerable images based on Panther’s findings.
+Given the application exposes metrics at /prometheus/metrics
+When a ServiceMonitor is deployed and Prometheus is configured
+Then Prometheus should successfully scrape the metrics and Alertmanager should trigger notifications based on defined alert rules
 
-Acceptance Criteria (AC)
-Given the Panther application provides an API for vulnerability reporting of container images,
-When the team explores Panther’s capabilities and API documentation,
-Then they should be able to document a clear understanding of how vulnerability data is exposed and identify potential ways to integrate it with the Image Pruner app.
+Tasks:
+Configure ServiceMonitor to pipe metrics to Prometheus
 
-Identify possible integration methods
+Define a ServiceMonitor object targeting the app service exposing /prometheus/metrics
+
+Validate that metrics are successfully scraped and visible in Prometheus UI
+
+Create an alert and configure notification in Alertmanager
+
+Define alerting rules based on application metrics (e.g., high error rate, latency)
+
+Configure Alertmanager to send alerts to a predefined channel (e.g., email, Slack, webhook)
+
+Validate alert firing and notification delivery with a test case
