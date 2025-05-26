@@ -1,18 +1,18 @@
-Given the application exposes metrics at /prometheus/metrics
-When a ServiceMonitor is deployed and Prometheus is configured
-Then Prometheus should successfully scrape the metrics and Alertmanager should trigger notifications based on defined alert rules
-
-Tasks:
-Configure ServiceMonitor to pipe metrics to Prometheus
-
-Define a ServiceMonitor object targeting the app service exposing /prometheus/metrics
-
-Validate that metrics are successfully scraped and visible in Prometheus UI
-
-Create an alert and configure notification in Alertmanager
-
-Define alerting rules based on application metrics (e.g., high error rate, latency)
-
-Configure Alertmanager to send alerts to a predefined channel (e.g., email, Slack, webhook)
-
-Validate alert firing and notification delivery with a test case
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cubes-http-request-alert
+  namespace: your-namespace
+spec:
+  groups:
+    - name: cubes-http-alerts
+      rules:
+        - alert: HighHttpRequestRate
+          expr: rate(http_server_requests_seconds_count{app="cubes"}[1m]) > 50
+          for: 1m
+          labels:
+            severity: warning
+            alertname: HighHttpRequestRate
+          annotations:
+            summary: "High HTTP request rate for cubes"
+            description: "The cubes app is receiving more than 50 requests per minute in pod {{ $labels.pod }}."
