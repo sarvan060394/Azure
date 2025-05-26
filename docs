@@ -40,6 +40,10 @@ count(
     namespace="cp-1049543"
   }
   and on(pod)
-  kube_pod_labels{pod!~".*-(build|deploy)-.*", pod=~"kubes-data-connect-mongodb.*"}
+  kube_pod_info{
+    pod=~"kubes-data-connect-mongodb.*",
+    pod!~".*-build$|.*-deploy$"
+  }
 ) == 0
+
 
