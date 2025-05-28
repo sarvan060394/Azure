@@ -71,128 +71,276 @@ Here is a **Runbook / Standard Operating Procedure (SOP)** to deploy the **Sourc
 
 ---
 
-## 📁 Step 1: Prepare Sourcegraph Codebase
-
-1. **Clone the Sourcegraph repository** (from GitHub/Bitbucket):
-
-   ```bash
-   git clone <REPO_URL>
-   ```
-
-   > Replace `<REPO_URL>` with the actual Git repository URL.
-
-2. **Exclude the environment file** (as instructed).
-
-3. **Push the code to Horizon Bitbucket** (your internal repository or mirror):
-
-   ```bash
-   cd <repo-name>
-   git remote add horizon <HORIZON_BITBUCKET_URL>
-   git push horizon main
-   ```
+Here's the **revised and detailed runbook** for deploying **Sourcegraph on OpenShift**, combining the information from the latest image and all previous instructions. This runbook is designed to be used as a **standard operating procedure (SOP)** for Dev, QA, and Prod environments.
 
 ---
 
-## 🚀 Step 2: Access the Jump Server
-
-1. **SSH into the jump server** where `helm` and `oc` CLI are installed:
-
-   ```bash
-   ssh <user>@<jump-server>
-   ```
-
-2. **Clone or pull the latest Sourcegraph code** on the jump server:
-
-   ```bash
-   git clone <HORIZON_BITBUCKET_URL>
-
-   ```
+# 📘 Sourcegraph Deployment Runbook for OpenShift
 
 ---
 
-## 🔐 Step 3: Log in to OpenShift
+## 📌 Prerequisites
 
-1. **Login using `oc` CLI**:
+Before beginning the deployment, ensure the following:
 
-   ```bash
-   oc login <OPENSHIFT_API_URL> --token=<TOKEN>
-   ```
+1. **Jump Server Configuration**:
 
-   > Replace `<OPENSHIFT_API_URL>` and `<TOKEN>` with your actual cluster details.
+   * Access to a jump server (or CI runner) with:
+
+     * `helm` installed (v3+)
+     * `oc` CLI installed (OpenShift CLI)
+   * Permissions to access the appropriate OpenShift cluster.
+
+2. **Vendor Image Handling**:
+
+   * The required Sourcegraph Docker images must be:
+
+     * **Quarantined** and hosted in the **internal Artifactory repository**.
+     * Used in place of the public Sourcegraph images.
+
+3. **Bitbucket Repository Setup**:
+
+   * Clone or maintain a Bitbucket repo structure like:
+
+     ```
+     sourcegraph-deploy/
+     ├── charts/sourcegraph/
+     ├── environments/
+     │   ├── dev/
+     │   │   └── override.yaml
+     │   ├── qa/
+     │   │   └── override.yaml
+     │   └── prod/
+     │       └── override.yaml
+     └── deploy_sourcegraph.yml  # Ansible playbook
+     ```
 
 ---
-🏷️ Step 4: Select/OpenShift Project (Namespace)
-bash
-Copy
-Edit
+
+## 🧾 Step-by-Step Instructions
+
+---
+
+### 🛠️ Step 1: Quarantine Sourcegraph Images
+
+* Identify the required version of Sourcegraph images.
+* Mirror (quarantine) these images into your **organization’s internal Artifactory**.
+* Ensure all image references in the `override.yaml` files point to Artifactory.
+
+📘 *This is often handled by a platform/DevOps team and must follow internal vendor image security policy.*
+
+---
+
+### 🌿 Step 2: Prepare Bitbucket Repository
+
+* Create a new feature or release branch in Bitbucket (e.g., `release/sourcegraph-v6.2.2553`).
+* From GitHub Sourcegraph repo (`sourcegraph/deploy-sourcegraph-helm`), download the required chart version.
+* **Exclude old/unused files** from your local repo except for `environments/lab` if it's in use.
+* Extract the downloaded chart files into your local Bitbucket repo structure.
+* Replace any existing files (except `override.yaml`) with the new files.
+
+---
+
+### 🖥️ Step 3: Pull Code to Jump Server (or CI)
+
+* SSH into your **jump server** or Jenkins agent where deployment will happen.
+* Use `git clone` or `git pull` to bring in the latest Sourcegraph Bitbucket branch.
+* Confirm the following paths exist and are updated:
+
+  * `charts/sourcegraph/`
+  * `environments/<env>/override.yaml`
+
+---
+
+### 🧪 Step 4: Helm Template Rendering (Local Manifest Generation)
+
+Use `helm template` to render Kubernetes manifests from the chart:
+
+```bash
+helm template sourcegraph ./charts/sourcegraph \
+  --namespace <target-namespace> \
+  --values ./environments/<env>/override.yaml \
+  > ./environments/<env>/rendered.yaml
+```
+
+Replace `<env>` with `dev`, `qa`, or `prod`, and `<target-namespace>` accordingly.
+
+---
+
+### 🚮 Step 5: (Optional) Clean Existing Sourcegraph Resources
+
+If this is a **re-deployment**, clean up existing Sourcegraph resources:
+
+```bash
 oc project <target-namespace>
-Replace <target-namespace> with the OpenShift namespace where Sourcegraph should be deployed.
-
-Use oc get projects to view available projects.
-
-## 🧹 Step 5: Clean Existing Sourcegraph Resources
-
-Run the following commands to delete any existing Sourcegraph resources in the current namespace:
-
-```bash
-oc delete deployments --all
-oc delete sts --all
-oc delete rs --all
-oc delete pods --all
+oc delete deployments --all || true
+oc delete statefulsets --all || true
+oc delete replicasets --all || true
+oc delete pods --all || true
 ```
 
-> ✅ This ensures a clean environment for a fresh deployment.
-
 ---
 
-## ⚙️ Step 6: Generate Manifest Using Helm
-
-Run the following `helm template` command to render Kubernetes manifests from the Helm chart:
+### 🚀 Step 6: Apply the Rendered Manifests
 
 ```bash
-helm template \
-  --values environments/lab/override-lab.yaml \
-  --version <chart-version> \
-  charts/sourcegraph/ \
-  > environments/lab/template-lab.yaml
+oc apply -f ./environments/<env>/rendered.yaml
 ```
-Replace <chart-version> with the desired Sourcegraph chart version (e.g., 6.2.2553).
 
-> 📝 This command generates a `template-lab.yaml` file with all the manifests for deployment.
-
----
-
-## 📦 Step 7: Apply the Manifests
-
-Deploy Sourcegraph using the generated manifest:
-
-bash
-Copy
-Edit
-oc apply -f environments/lab/template-lab.yaml \
-  > environments/lab/apply-output 2>&1
-Output is stored in apply-output for auditing/debugging.
+This will deploy Sourcegraph with your custom configuration to the selected OpenShift project.
 
 ---
 
-## 🔍 Step 7: Validate the Deployment
+### ✅ Step 7: Validate the Deployment
 
-1. **List all pods** to ensure they are in `Running` state:
+```bash
+oc get all -n <target-namespace>
+oc get routes -n <target-namespace>
+```
 
-   ```bash
-   oc get all
-   ```
-
-2. **Check the route** to verify that Sourcegraph is accessible:
-
-   ```bash
-   oc get route
-   ```
-
-3. **Open the route URL** in your browser and verify Sourcegraph is up and functional.
+* Hit the exposed route URL (from `oc get route`) in the browser.
+* Confirm that the **Sourcegraph UI loads successfully**.
 
 ---
 
+## 🧩 Optional: Automate with Ansible
+
+If using Jenkins to trigger Ansible, use this \[Ansible Playbook structure]\(already provided above), and configure your Jenkinsfile to:
+
+* Pull the repo.
+* Pass environment as JSON to Ansible using `--extra-vars`.
+
+---
+
+## 🧾 Final Note
+
+* Always maintain a backup of the existing `override.yaml` before making changes.
+* Confirm Artifactory images are accessible from the OpenShift cluster.
+
+---
+
+Would you like this runbook exported as a markdown or Confluence-compatible format?
 
 
 
+h2. 📌 Prerequisites
+
+* Ensure the following are available on the jump server:
+** {color:#172b4d}Helm v3 and oc CLI installed and configured{color}
+** {color:#172b4d}Network access to external PostgreSQL DB{color}
+** {color:#172b4d}Artifactory access to pull quarantined images{color}
+* Vendor images must be quarantined in your organization’s Artifactory before deployment.
+* Jenkins will pass a JSON with env-specific values and trigger the Ansible playbook.
+
+---
+
+h2. 🛠️ Step 1: Quarantine the Required Images
+
+* Quarantine the required version of the Sourcegraph image in Artifactory.
+* Tag and push them using:
+{code:bash}
+docker pull sourcegraph/sourcegraph:<tag>
+docker tag sourcegraph/sourcegraph:<tag> artifactory.myorg.com/sourcegraph:<tag>
+docker push artifactory.myorg.com/sourcegraph:<tag>
+{code}
+
+---
+
+h2. 🌿 Step 2: Prepare Bitbucket Repository
+
+* Create a new feature branch in Bitbucket.
+* Clone the repo:
+{code:bash}
+git clone https://bitbucket.myorg.com/scm/team/deploy-sourcegraph-helm.git
+cd deploy-sourcegraph-helm
+git checkout -b feature/<env>-deployment
+{code}
+
+* Retain only the `environments/lab` folder locally.
+* Replace older files with the latest extracted files for the target version from GitHub or Artifactory.
+
+---
+
+h2. 🖥️ Step 3: Pull Code to Jump Server
+
+* You can do this either manually or through Jenkins.
+* From VSCode or shell:
+{code:bash}
+git pull origin feature/<env>-deployment
+{code}
+
+---
+
+h2. 🧪 Step 4: Helm Template Rendering
+
+* Render manifests from your override files:
+{code:bash}
+helm template sourcegraph ./charts/sourcegraph \
+  --namespace <target-namespace> \
+  --values environments/<env>/values.yaml > environments/<env>/rendered.yaml
+{code}
+
+---
+
+h2. 💾 Step 5: Backup PostgreSQL Database (External)
+
+Before deleting any Sourcegraph resources, take a full backup of the PostgreSQL DB:
+
+{code:bash}
+PG_HOST=<postgres_host>
+PG_PORT=5432
+PG_USER=<postgres_user>
+PG_DB=<sourcegraph_db>
+BACKUP_DIR=/opt/db_backups/sourcegraph
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+mkdir -p $BACKUP_DIR
+
+PGPASSWORD=<postgres_password> pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER \
+  -d $PG_DB -F c -f "$BACKUP_DIR/sourcegraph_backup_$TIMESTAMP.dump"
+{code}
+
+* Ensure credentials are securely managed and the backup is validated before proceeding.
+
+---
+
+h2. 🚮 Step 6: Delete Existing Sourcegraph Resources (Optional)
+
+Switch to the correct project and delete old resources:
+{code:bash}
+oc project <target-namespace>
+oc delete deployments,statefulsets,replicasets,pods --all
+{code}
+
+---
+
+h2. 🚀 Step 7: Apply Helm-Rendered Manifests
+
+{code:bash}
+oc apply -f environments/<env>/rendered.yaml
+{code}
+
+---
+
+h2. ✅ Step 8: Post-Deployment Validation
+
+* Check pods and services:
+{code:bash}
+oc get all -n <target-namespace>
+{code}
+
+* Validate Sourcegraph route:
+{code:bash}
+oc get routes -n <target-namespace>
+{code}
+
+---
+
+h2. 🔁 Optional: Jenkins + Ansible Workflow
+
+* Jenkinsfile triggers Ansible and passes `env_vars.json`
+* Ansible:
+** Clones the repo
+** Backs up PostgreSQL
+** Deletes old resources
+** Applies new manifests
