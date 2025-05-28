@@ -344,3 +344,35 @@ h2. 🔁 Optional: Jenkins + Ansible Workflow
 ** Backs up PostgreSQL
 ** Deletes old resources
 ** Applies new manifests
+
+
+💾 Step 5: Backup PostgreSQL Database
+Before deleting any Sourcegraph resources, take a full backup of the Sourcegraph PostgreSQL database running on the external server.
+
+Example Backup Script:
+bash
+Copy
+Edit
+# Replace the values below with actual ones
+PG_HOST=<postgres_host>
+PG_PORT=5432
+PG_USER=<postgres_user>
+PG_DB=<sourcegraph_db>
+BACKUP_DIR=/opt/db_backups/sourcegraph
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+mkdir -p $BACKUP_DIR
+
+PGPASSWORD=<postgres_password> pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PG_DB -F c -f "$BACKUP_DIR/sourcegraph_backup_$TIMESTAMP.dump"
+
+if [ $? -eq 0 ]; then
+  echo "✅ PostgreSQL backup completed: $BACKUP_DIR/sourcegraph_backup_$TIMESTAMP.dump"
+else
+  echo "❌ PostgreSQL backup failed"
+  exit 1
+fi
+✅ Ensure:
+
+You have passwordless SSH or securely managed secrets.
+
+The backup is automated and validated before proceeding.
