@@ -376,3 +376,29 @@ fi
 You have passwordless SSH or securely managed secrets.
 
 The backup is automated and validated before proceeding.
+
+
+
+h2. 🧾 Overview
+
+This runbook provides a detailed, step-by-step guide to manually deploy the *Sourcegraph* application in an *OpenShift* environment using *Helm* and the *oc CLI*. It covers all necessary stages including preparation, environment setup, PostgreSQL database backup, image quarantine, configuration overrides, and deployment validation.
+
+The deployment process ensures:
+* Clean separation between Dev, QA, and Prod through environment-specific overrides.
+* Use of quarantined images from the internal Artifactory for security compliance.
+* Database safety via pre-deployment backups.
+* Controlled and auditable rollout using Helm-rendered manifests and oc commands.
+
+This runbook is intended for DevOps engineers responsible for deploying Sourcegraph until full automation is available.
+
+h2. 🚧 Next Steps / Work in Progress
+
+* We are currently working on automating the entire Sourcegraph deployment lifecycle.
+* The goal is to trigger deployments via a Jenkins pipeline, passing environment-specific parameters through JSON.
+* An Ansible playbook is being developed to:
+** Clone the latest code from Bitbucket.
+** Perform PostgreSQL database backups before any changes.
+** Delete old OpenShift resources safely.
+** Render and apply Helm templates with environment-specific values.
+
+Once completed, the manual steps in this runbook will be replaced with a fully automated, standardized pipeline to improve speed, reliability, and traceability of deployments.
