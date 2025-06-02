@@ -402,3 +402,9 @@ h2. 🚧 Next Steps / Work in Progress
 ** Render and apply Helm templates with environment-specific values.
 
 Once completed, the manual steps in this runbook will be replaced with a fully automated, standardized pipeline to improve speed, reliability, and traceability of deployments.
+
+
+sum by (job) (
+  rate(http_server_requests_seconds_count{job="kubes-data-connect-mongodb", uri!="/actuator/prometheus"}[1m])
+
+)
