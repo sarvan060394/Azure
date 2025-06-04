@@ -421,3 +421,38 @@ sum by (job) (
   annotations:
     summary: "No running pods for kubes-data-connect-mongodb in namespace cp-1049543"
     description: "All application pods (excluding build/deploy) for kubes-data-connect-mongodb are not running in namespace cp-1049543."
+
+
+
+Here’s a polished Jira comment to close the story:
+
+⸻
+
+Closing Comment for Story: Identify possible integration methods with Panther application
+
+After thorough analysis, we’ve identified a feasible integration approach between the Panther and Image Pruner applications, aligning with best practices.
+
+Summary of Workflows:
+	•	Panther Workflow:
+	1.	Loop through all container images in OpenShift.
+	2.	Query CM Portal for vulnerabilities.
+	3.	Display vulnerability data per cluster in a UI.
+	•	Image Pruner Workflow:
+	1.	Retrieve images along with associated cluster and namespace data.
+	2.	Delete those images from Artifactory.
+	3.	Delete OpenShift resources utilizing those images.
+
+Proposed Integration Flow:
+	1.	Panther collects all images from both Artifactory and OpenShift.
+	2.	It queries the CM Portal to get a comprehensive vulnerability report.
+	3.	Panther then passes a list of vulnerable images along with corresponding cluster and namespace details to Image Pruner.
+	4.	Image Pruner deletes the identified vulnerable images from Artifactory.
+	5.	It then proceeds to delete OpenShift resources (pods, deployments, etc.) that are consuming those images.
+
+This integration ensures a clean, automated, and secure vulnerability remediation workflow across all clusters.
+
+✅ All possible integration methods have been evaluated and documented. Closing the story.
+
+⸻
+
+Let me know if you’d like to include specific Jira ticket links or references.
