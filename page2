@@ -1,182 +1,141 @@
-Based on the uploaded images, you can structure your deck to explain the current process of creating a certificate in Venafi as follows:
+Sure! Here's the full Jira content with a **single Acceptance Criteria**, **description**, and **2 well-scoped subtasks** for the story:
 
-Venafi Certificate Creation Process
+---
 
-1. Overview of Venafi
-	•	Venafi is used for certificate management.
-	•	Developers generate certificates for development environments.
-	•	System engineers generate certificates for production environments.
-	•	Certificates are signed by a Bank-approved Certificate Authority.
+### **Story**: Prometheus configuration - Kubes Data Connect monitoring and alerting
 
-2. Steps to Create a Certificate in Venafi
+---
 
-Step 1: Log in to Venafi
-	•	Access the Venafi portal using valid credentials.
+### **Description**:
 
-Step 2: Find the Correct Policy Location
-	•	Navigate to the policy directory where the certificate needs to be added.
-	•	Example: TI - Middleware Engineering → Container-test (actual policy depends on the use case).
+The goal of this story is to configure monitoring and alerting for the *Kubes Data Connect* application, which is hosted in OpenShift (OCP).
 
-Step 3: Add a New Server Certificate
-	•	Right-click and select “Server Certificate” to create a new certificate.
+This involves:
 
-Step 4: Populate Certificate Details
-	•	Certificate Name and Common Name should be identical.
-	•	Click “Edit” on Management Type and select “Enrollment”.
+* Identifying and listing all key metrics (as provided by the application team) that require monitoring.
+* Writing the required **PromQL expressions** for each metric.
+* Creating corresponding **PrometheusRule** configurations with appropriate severity labels (e.g., `critical`, `warning`) to enable effective alerting.
 
-Step 5: Configure CSR and Hash Algorithm
-	•	Choose Service Generated CSR.
-	•	Use SHA-256 as the hash algorithm.
+The outcome will be an operational PrometheusRules manifest deployed to the OCP cluster, providing actionable monitoring for the application.
 
-Step 6: Configure Subject Alternate Name (SAN)
-	•	Add the Common Name to the SAN field.
-	•	If multiple alternate names are required, specify them here.
+---
 
-Step 7: Review and Verify Other Information
-	•	Ensure that the certificate type (e.g., G3B) is selected correctly.
+### **Acceptance Criteria** (Single, Given-When-Then format):
 
-Step 8: Fill in Custom Fields
-	•	Mandatory fields include:
-	•	AIT Number
-	•	Certificate Owner DG & NBKID
-	•	Certificate Owner Email
-	•	Set the Deployment Environment as Non-Production unless specified otherwise.
+**Given** the list of metrics provided by the Kubes Data Connect team,
+**When** the PrometheusRules are written and deployed with severity-based alerting,
+**Then** alerts should be generated correctly in Prometheus when threshold conditions are met for those metrics.
 
-Step 9: Save and Deploy
-	•	Save all the details and submit the request for approval.
-	•	Monitor the approval status and download the certificate once issued.
+---
 
-Key Components of Certificate Manager
-	•	Certificate Issuance: Automated process for generating certificates.
-	•	Renewal Policy: Ensures timely renewal before expiration.
-	•	Revocation & Expiry Handling: Manages certificate deactivation when no longer needed.
+### **Subtasks**:
 
-Certificate Lifecycle in Certificate Manager
-	1.	Request Initiation: User requests a certificate in Venafi.
-	2.	Approval Workflow: Approval by the designated approvers.
-	3.	Certificate Issuance: Certificate is generated and signed.
-	4.	Deployment: Certificate is deployed in the required environment.
-	5.	Monitoring & Renewal: Expiry tracking and automatic renewal reminders.
-	6.	Revocation (if needed): Certificate is revoked in case of a security risk.
+1. **List metrics and write PromQL expressions for alerting**
 
-Would you like any additional details or modifications?
+   * Document all required metrics shared by the application team.
+   * Write corresponding PromQL queries for each metric based on recommended thresholds.
+
+2. **Create PrometheusRules YAML and configure alerting severity**
+
+   * Implement the PrometheusRules configuration YAML including labels for `severity`.
+   * Deploy the rules to the appropriate OCP namespace and verify that alerts trigger as expected.
+
+---
+
+Let me know if you also need an example PrometheusRule YAML for one of the metrics.
 
 
-You can include these additional steps in your deck under “Pre-requisites for Venafi Access”:
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-Pre-requisites for Venafi Access
+Sure! Here's the full Jira content with a **clear description**, a **single Given-When-Then acceptance criteria**, and **2 relevant subtasks** tailored to the story.
 
-Before a user can generate certificates in Venafi, they must complete the following steps:
-	1.	Complete Required Trainings
-	•	Users must undergo mandatory training to understand Venafi usage and security policies.
-	•	Training completion is required before portal access is granted.
-	2.	Raise an ARM Request for Policy Tree Access
-	•	Users need to submit an Access Request Management (ARM) ticket.
-	•	The request must specify the required policy tree to which access is needed.
-	•	Approval is required before certificate creation can proceed.
+---
 
-This ensures only authorized personnel can manage certificates and follow security best practices.
+### **Story**: Prometheus configuration - Kubes Kafka Producer monitoring and alerting
 
-Would you like to add any screenshots or diagrams to illustrate the process?
+---
 
+### **Description**:
 
+This story aims to configure monitoring and alerting for the **Kubes Kafka Producer** application, which is deployed in OpenShift (OCP).
 
-JIRA Story: Unified Repository for Kubernetes Application
+The team has provided a list of key metrics that must be monitored to ensure application reliability and performance.
+The tasks include:
 
-Description:
-Currently, our source code exists in both our repository and the client’s repository, where it is built and deployed within their namespace. This setup requires maintaining duplicate codebases and increases complexity.
+* Reviewing the provided metrics and determining appropriate alert conditions.
+* Writing **PromQL** queries for each metric.
+* Creating **PrometheusRules** that include appropriate severity labels (`warning`, `critical`, etc.) to facilitate effective alerting.
 
-To streamline the deployment process, we need to build a stable container image and push it to a common registry (Artifactory). The client-side repository will only contain deployment manifests to pull the image from the registry, eliminating the need to maintain source code in multiple places.
+The final configuration will be deployed to the cluster to enable real-time alerting for the Kafka producer component.
 
-This approach will ensure consistency, reduce maintenance overhead, and simplify client-side deployments.
+---
 
-Acceptance Criteria:
-	1.	Stable Image Creation:
-	•	The application code should be built into a stable container image.
-	•	The image should be tagged appropriately (e.g., versioned or latest).
-	2.	Push Image to Artifactory:
-	•	The container image should be successfully pushed to the common registry (Artifactory).
-	•	The image should be accessible by client namespaces.
-	3.	Update Client Repository:
-	•	The client-side repository should contain only deployment manifests.
-	•	The manifests should reference the image from Artifactory instead of building it locally.
-	4.	Validation & Testing:
-	•	Verify that the application deploys successfully in the client namespace using the new approach.
-	•	Ensure the client-side pipeline pulls the correct image version from Artifactory.
-	5.	Documentation & Communication:
-	•	Update internal documentation to reflect the new image-based deployment approach.
-	•	Inform client teams about the changes and provide necessary guidance.
+### **Acceptance Criteria** (Given-When-Then format):
 
-Would you like to include any additional criteria or details specific to your environment?
-.....
+**Given** the list of Kafka producer metrics provided by the team,
+**When** PrometheusRules are created with valid PromQL expressions and severity levels,
+**Then** alerts should trigger correctly based on the defined thresholds for each metric.
 
-JIRA Comment to Close the Story:
+---
 
-The implementation for this story has been successfully completed. Below are the key updates made:
-	1.	Stable Image Creation & Push to Shared Registry:
-	•	We have built a stable container image for the application.
-	•	The image has been successfully pushed to the shared registry (Artifactory).
-	•	Proper tagging and versioning have been implemented to ensure consistency in deployments.
-	2.	Client-Side Repository Updates:
-	•	The client-side repository has been updated to contain only the necessary deployment manifests.
-	•	The manifests are configured to pull the application image from the shared registry instead of building it locally.
-	•	This ensures a streamlined and uniform deployment process across all client environments.
-	3.	Jenkins Pipeline for Deployment:
-	•	A Jenkinsfile has been added to the client-side repository to automate the deployment of the application in OpenShift.
-	•	This allows for a standardized deployment process without requiring manual intervention.
-	4.	Configuration Management:
-	•	A properties file has been added to the client repository to allow for environment-specific configurations.
-	•	This ensures that necessary application parameters can be dynamically set during deployment.
-	5.	Validation & Testing:
-	•	Verified that the application deploys successfully in the client namespace using the new setup.
-	•	Tested the end-to-end deployment process through Jenkins to ensure the correct image is pulled and deployed.
+### **Subtasks**:
 
-With these changes, the story is now complete, and we can proceed with closing it. Let me know if any further updates or refinements are needed.
+1. **Review and write PromQL for Kafka producer metrics**
 
+   * Analyze the metrics shared by the application team.
+   * Draft PromQL queries for each metric based on defined thresholds for alerting.
 
-Given a pod exists in the cluster
-When the delete_stale_pods API is invoked
-Then the API should:
-	1.	Case 1: If the pod has no owner (i.e., ownerReferences is empty), delete the pod immediately. ￼
-	2.	Case 2: If the pod is owned by a ReplicaSet or ReplicationController, verify that the owner resource no longer exists. If the owner is absent, delete the pod.
-	3.	Case 3: If the pod is owned by a ReplicaSet or ReplicationController that still exists, do not delete the pod. ￼
+2. **Create and deploy PrometheusRules with severity-based alerts**
 
-⸻
+   * Define the PrometheusRules YAML including all PromQL queries.
+   * Add severity labels (`warning`, `critical`) and deploy the rule set in the appropriate OpenShift namespace.
+   * Validate alert generation via Prometheus/Alertmanager.
 
-📌 Definition of Done (DoD)
-	•	The delete_stale_pods API correctly identifies and deletes pods without owners.
-	•	The API checks for the existence of ReplicaSet or ReplicationController owners before deleting pods. ￼
-	•	Pods with existing owners are not deleted. ￼
-	•	Unit tests cover all three cases: no owner, owner deleted, and owner exists.
-	•	Integration tests validate the API’s behavior in a live cluster environment.
-	•	Documentation is updated to reflect the enhanced behavior of the delete_stale_pods API.
+---
 
+Let me know if you'd like to include examples or validation steps.
 
-User Story 1: Delete Pods Solely Owned by a ReplicaSet
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-As a Kubernetes cluster administrator,
-I want the delete_stale_pods API to identify and delete pods that are solely owned by a ReplicaSet,
-So that orphaned pods and their associated ReplicaSets are efficiently cleaned up, freeing up cluster resources.
+Certainly! Here's the Jira content with a clear **description**, a **single Given-When-Then acceptance criteria**, and **2 actionable subtasks** for your story:
 
-Acceptance Criteria:
-	•	The API identifies pods with a single owner reference to a ReplicaSet.
-	•	Upon identification, the API deletes both the pod and its associated ReplicaSet.
-	•	Deletion operations respect Kubernetes finalizers and owner reference propagation policies to prevent orphaned resources.
+---
 
-⸻
+### **Story**: SourceGraph - Explore monitoring options for SourceGraph services
 
-📝 User Story 2: Delete Pods Owned by ReplicaSet and Deployment When Deployment Has No Active Pods
+---
 
-As a Kubernetes cluster administrator,
-I want the delete_stale_pods API to delete pods owned by both a ReplicaSet and a Deployment when the Deployment has no active running pods,
-So that redundant resources are removed, maintaining cluster efficiency.
+### **Description**:
 
-Acceptance Criteria:
-	•	The API identifies pods with owner references to both a ReplicaSet and a Deployment.
-	•	The API checks if the associated Deployment has any active running pods.
-	•	If the Deployment has no active running pods:
-	•	Delete the ReplicaSet.
-	•	Delete the Deployment.
-	•	Delete the pod. ￼
-	•	If the Deployment has active running pods:
-	•	Do not delete the pod, ReplicaSet, or Deployment.
+This story involves exploring monitoring capabilities for the **SourceGraph** application, which is a vendor-managed service.
+The primary objective is to assess whether **Dynatrace OneAgent** can be installed and configured to monitor SourceGraph services running in the environment.
+
+If OneAgent integration is not feasible due to technical or vendor restrictions, the secondary goal is to evaluate and document alternative monitoring solutions that can offer visibility into SourceGraph's performance, availability, and service health.
+
+This may include native Prometheus integration (if supported), OpenTelemetry, or other compatible observability tools.
+
+---
+
+### **Acceptance Criteria** (Given-When-Then format):
+
+**Given** the requirement to monitor SourceGraph services,
+**When** Dynatrace OneAgent feasibility is evaluated and alternative monitoring options are assessed,
+**Then** a recommended monitoring approach should be documented with setup steps or next actions based on findings.
+
+---
+
+### **Subtasks**:
+
+1. **Evaluate feasibility of Dynatrace OneAgent with SourceGraph**
+
+   * Investigate if OneAgent can be deployed alongside SourceGraph services.
+   * Check for technical compatibility, vendor documentation, and container access requirements.
+
+2. **Identify and document alternative monitoring options**
+
+   * If OneAgent cannot be used, explore other monitoring integrations such as Prometheus, OpenTelemetry, or built-in vendor tools.
+   * Document pros, cons, and setup feasibility for each identified alternative.
+
+---
+
+Let me know if you'd like help drafting a summary table or evaluation matrix for your findings.
