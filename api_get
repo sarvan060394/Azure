@@ -190,3 +190,15 @@ def get_cluster_images(cluster_names: List[str], namespaces: List[str]) -> Dict:
 
     return response
 
+----------------------**************** ecluding build and deploy pods *************--------------------------------
+
+import re
+
+exclude_pattern = re.compile(r".*(build|deploy).*", re.IGNORECASE)
+
+...
+
+if exclude_pattern.match(pod_name):
+    continue
+
+
