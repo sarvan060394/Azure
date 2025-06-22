@@ -202,3 +202,43 @@ if exclude_pattern.match(pod_name):
     continue
 
 
+import re
+
+def get_images_by_namespace(dyn_client, namespace: str) -> dict:
+    result = {
+        "all_images": set(),
+        "image_usage": {}
+    }
+
+    def record_usage(image: str, kind: str, name: str):
+        result["all_images"].add(image)
+        usage = result["image_usage"].setdefault(image, {
+            "Deployments": [],
+            "DeploymentConfigs": [],
+            "Pods": []
+        })
+        usage[kind].append(name)
+
+    # --- Pods ---
+    try:
+        # Compile a regex to match pod names like: myapp-1-build, app-deploy-abc, etc.
+        exclude_pattern = re.compile(r".*(build|deploy).*", re.IGNORECASE)
+
+        pods = dyn_client.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)
+        for pod in pods.items:
+            pod_name = pod.metadata.name
+
+            if exclude_pattern.match(pod_name):
+                continue  # Skip build/deploy pods
+
+            for container in pod.spec.containers:
+                record_usage(container.image, "Pods", pod_name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching Pods: {e}")
+
+    # return result after all processing
+    result["all_images"] = sorted(result["all_images"])
+    return result
+
+
+
