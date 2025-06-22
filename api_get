@@ -240,5 +240,22 @@ def get_images_by_namespace(dyn_client, namespace: str) -> dict:
     result["all_images"] = sorted(result["all_images"])
     return result
 
+-----------------------------************************ User Inputs *****************------------------------
+
+from fastapi import APIRouter, Query
+from services.image_service import get_images_across_clusters
+
+router = APIRouter()
+
+@router.get("/get-images")
+def get_images(
+    openshift_cluster_urls: str = Query(..., description="Comma-separated OpenShift cluster URLs"),
+    namespaces: str = Query(..., description="Comma-separated namespaces")
+):
+    cluster_list = [url.strip() for url in openshift_cluster_urls.split(",") if url.strip()]
+    namespace_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
+    return get_images_across_clusters(cluster_list, namespace_list)
+
+
 
 
