@@ -87,3 +87,106 @@ def get_images(
             response[cluster_name] = {"error": str(e)}
 
     return response
+
+
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+
+
+from fastapi import APIRouter, Query
+from typing import List
+from services.image_service import get_cluster_images
+
+router = APIRouter()
+
+@router.get("/get-images")
+def get_images(
+    cluster_names: List[str] = Query(..., description="List of cluster names"),
+    namespaces: List[str] = Query(..., description="List of namespaces")
+):
+    return get_cluster_images(cluster_names, namespaces)
+
+-----------------------------------
+
+from typing import List, Dict
+from kubernetes import config, dynamic
+from openshift.dynamic import DynamicClient
+
+# Update this with your actual cluster name to kubeconfig file path
+KUBECONFIG_MAP = {
+    "prod": "/kubeconfigs/prod-kubeconfig",
+    "dev": "/kubeconfigs/dev-kubeconfig"
+}
+
+def get_dyn_client(kubeconfig_path: str) -> DynamicClient:
+    k8s_client = config.new_client_from_config(config_file=kubeconfig_path)
+    return dynamic.DynamicClient(k8s_client)
+
+def get_images_by_namespace(dyn_client: DynamicClient, namespace: str) -> dict:
+    result = {
+        "all_images": set(),
+        "image_usage": {}
+    }
+
+    def record_usage(image: str, kind: str, name: str):
+        result["all_images"].add(image)
+        usage = result["image_usage"].setdefault(image, {
+            "Deployments": [],
+            "DeploymentConfigs": [],
+            "Pods": []
+        })
+        usage[kind].append(name)
+
+    # Deployments
+    try:
+        deployments = dyn_client.resources.get(api_version="apps/v1", kind="Deployment").get(namespace=namespace)
+        for dep in deployments.items:
+            for c in dep.spec.template.spec.containers:
+                record_usage(c.image, "Deployments", dep.metadata.name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching Deployments: {e}")
+
+    # DeploymentConfigs
+    try:
+        dcs = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig").get(namespace=namespace)
+        for dc in dcs.items:
+            for c in dc.spec.template.spec.containers:
+                record_usage(c.image, "DeploymentConfigs", dc.metadata.name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching DeploymentConfigs: {e}")
+
+    # Pods
+    try:
+        pods = dyn_client.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)
+        for pod in pods.items:
+            for c in pod.spec.containers:
+                record_usage(c.image, "Pods", pod.metadata.name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching Pods: {e}")
+
+    result["all_images"] = sorted(result["all_images"])
+    return result
+
+def get_cluster_images(cluster_names: List[str], namespaces: List[str]) -> Dict:
+    response = {}
+
+    for cluster_name in cluster_names:
+        kubeconfig_path = KUBECONFIG_MAP.get(cluster_name)
+        if not kubeconfig_path:
+            response[cluster_name] = {"error": f"No kubeconfig found for cluster '{cluster_name}'"}
+            continue
+
+        try:
+            dyn_client = get_dyn_client(kubeconfig_path)
+            cluster_data = {}
+
+            for ns in namespaces:
+                ns_data = get_images_by_namespace(dyn_client, ns)
+                cluster_data[ns] = ns_data
+
+            response[cluster_name] = cluster_data
+
+        except Exception as e:
+            response[cluster_name] = {"error": str(e)}
+
+    return response
+
