@@ -171,3 +171,55 @@ Integrate with the CM portal API to retrieve vulnerability reports for the colle
 ⸻
 
 Let me know if you want to define edge cases or add error handling as part of the subtasks.
+
+
+
+
+Here is a well-structured Acceptance Criteria (AC), Definition of Done (DoD), and Subtasks for the story:
+
+⸻
+
+Story:
+
+Kubes Producer Splunk Dashboard Setup for Horizon Team
+
+⸻
+
+Acceptance Criteria (AC)
+
+Title: Setup Splunk dashboard for Horizon team to visualize Kubes Producer logs
+
+Description:
+As a DevOps engineer, I want to set up a Splunk dashboard for the Horizon team that visualizes logs from the Kubes Producer application, so the team can monitor system behavior, performance, and errors in real time.
+
+⸻
+
+Given that the Kubes Producer application is emitting logs and Splunk is configured to receive logs,
+When the logs from the application are indexed into Splunk,
+Then a new Splunk dashboard should be created with relevant panels to show log volume, error rates, service behavior trends, and custom search queries specific to Horizon team use cases.
+
+⸻
+
+Definition of Done (DoD)
+	•	Splunk index for Kubes Producer logs is confirmed and receiving data.
+	•	A Splunk dashboard is created under the Horizon team’s shared folder or project space.
+	•	Dashboard contains panels such as:
+	•	Log ingestion over time
+	•	Error count by severity
+	•	Top log sources
+	•	Custom queries requested by Horizon team
+	•	Dashboard has been reviewed and validated by at least one member of the Horizon team.
+	•	Access is provided to all necessary Horizon team members.
+	•	Setup documentation is updated in the team Confluence or internal wiki.
+
+⸻
+
+Subtasks
+	1.	Subtask 1:
+Configure and verify Splunk log ingestion for the Kubes Producer application (including index and sourcetype setup if required).
+	2.	Subtask 2:
+Create and publish a Splunk dashboard with relevant visualizations and filters tailored to the Horizon team’s operational needs.
+
+⸻
+
+Let me know if you’d like to break this further by environment (e.g., non-prod vs prod), or include alerting as part of the scope.
