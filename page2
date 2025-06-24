@@ -139,3 +139,35 @@ This may include native Prometheus integration (if supported), OpenTelemetry, or
 ---
 
 Let me know if you'd like help drafting a summary table or evaluation matrix for your findings.
+
+
+
+Here’s a single Acceptance Criteria (AC) written in the Gherkin style, with a description and two clear subtasks for the user story “Image pruner enhancements”:
+
+⸻
+
+Acceptance Criteria
+
+Title: Retrieve running OpenShift images and enrich with CM portal vulnerability data
+
+Description:
+As a developer, I want to enhance the image pruner service by creating a GET API that lists all running images in OpenShift resources and enriches the data by fetching vulnerability reports from the CM portal, so that users can identify vulnerable images.
+
+⸻
+
+Given the OpenShift cluster is accessible and CM portal is reachable,
+When a user calls the image pruner GET API,
+Then the API should return a list of all running container images from OpenShift workloads (like Deployments, StatefulSets, DaemonSets, etc.),
+And for each image, the API should include its vulnerability report and mark whether it is vulnerable based on the CM portal response.
+
+⸻
+
+Subtasks
+	1.	Subtask 1:
+Implement a function to collect all currently running container images from OpenShift resources such as Pods, Deployments, StatefulSets, and DaemonSets.
+	2.	Subtask 2:
+Integrate with the CM portal API to retrieve vulnerability reports for the collected images and merge the response with the image list.
+
+⸻
+
+Let me know if you want to define edge cases or add error handling as part of the subtasks.
