@@ -257,5 +257,154 @@ def get_images(
     return get_images_across_clusters(cluster_list, namespace_list)
 
 
+--------;;;;;;;---------
+from fastapi import APIRouter, Query
+from services.image_service import get_images_across_clusters
+
+router = APIRouter()
+
+@router.get("/get-images")
+async def get_images(
+    openshift_cluster_urls: str = Query("https://api.ocp-dev.com", description="Comma-separated OpenShift cluster URLs"),
+    namespaces: str = Query("default", description="Comma-separated namespaces")
+):
+    cluster_list = [url.strip() for url in openshift_cluster_urls.split(",") if url.strip()]
+    namespace_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
+    return await get_images_across_clusters(cluster_list, namespace_list)
+
+
+import os
+import asyncio
+import re
+from utils.ocp_auth import get_dyn_client_from_url
+from services.aqua_service import get_aqua_token, trigger_and_get_scan
+
+async def get_images_across_clusters(cluster_urls, namespaces):
+    response = {}
+    all_images = set()
+
+    for url in cluster_urls:
+        try:
+            dyn_client = get_dyn_client_from_url(url)
+            cluster_data = {}
+
+            for ns in namespaces:
+                ns_data = get_images_by_namespace(dyn_client, ns)
+                all_images.update(ns_data["all_images"])
+                cluster_data[ns] = ns_data
+
+            response[url] = cluster_data
+
+        except Exception as e:
+            response[url] = {"error": str(e)}
+
+    # Get Aqua token
+    aqua_username = os.getenv("AQUA_USERNAME")
+    aqua_password = os.getenv("AQUA_PASSWORD")
+    token = await get_aqua_token(aqua_username, aqua_password)
+
+    # Run scans in parallel
+    scan_tasks = [trigger_and_get_scan(img, token) for img in all_images]
+    scan_results = await asyncio.gather(*scan_tasks)
+    scan_result_map = dict(zip(all_images, scan_results))
+
+    # Inject scan results
+    vulnerable_images = []
+    for cluster_data in response.values():
+        for ns_data in cluster_data.values():
+            image_usage = ns_data.get("image_usage", {})
+            ns_data["vulnerabilities"] = {}
+
+            for image in ns_data["all_images"]:
+                vuln = scan_result_map.get(image, {})
+                ns_data["vulnerabilities"][image] = vuln
+
+                if any(vuln.get(level, 0) > 0 for level in ["critical", "high", "medium"]):
+                    vulnerable_images.append({
+                        "image": image,
+                        "used_by": image_usage.get(image, {}),
+                        "vulnerabilities": vuln
+                    })
+
+    response["vulnerable_images"] = vulnerable_images
+    return response
+
+
+def get_images_by_namespace(dyn_client, namespace: str) -> dict:
+    result = {
+        "all_images": set(),
+        "image_usage": {}
+    }
+
+    def record_usage(image: str, kind: str, name: str):
+        result["all_images"].add(image)
+        usage = result["image_usage"].setdefault(image, {
+            "Deployments": [],
+            "DeploymentConfigs": [],
+            "Pods": []
+        })
+        usage[kind].append(name)
+
+    exclude_pattern = re.compile(r".*(build|deploy).*", re.IGNORECASE)
+
+    try:
+        dcs = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig").get(namespace=namespace)
+        for dc in dcs.items:
+            for c in dc.spec.template.spec.containers:
+                record_usage(c.image, "DeploymentConfigs", dc.metadata.name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching DeploymentConfigs: {e}")
+
+    try:
+        deployments = dyn_client.resources.get(api_version="apps/v1", kind="Deployment").get(namespace=namespace)
+        for deploy in deployments.items:
+            for c in deploy.spec.template.spec.containers:
+                record_usage(c.image, "Deployments", deploy.metadata.name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching Deployments: {e}")
+
+    try:
+        pods = dyn_client.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)
+        for pod in pods.items:
+            pod_name = pod.metadata.name
+            if exclude_pattern.match(pod_name):
+                continue
+            for c in pod.spec.containers:
+                record_usage(c.image, "Pods", pod_name)
+    except Exception as e:
+        print(f"[{namespace}] Error fetching Pods: {e}")
+
+    result["all_images"] = sorted(result["all_images"])
+    return result
+
+
+import httpx
+
+AQUA_BASE_URL = "https://gis-container-scan.bankofamerica.com/api/v1"
+AQUA_LOGIN_URL = f"{AQUA_BASE_URL}/login"
+AQUA_SCAN_URL = f"{AQUA_BASE_URL}/scanner/registry"
+
+async def get_aqua_token(username: str, password: str) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            AQUA_LOGIN_URL,
+            json={"id": username, "password": password},
+            headers={"Content-Type": "application/json"}
+        )
+        response.raise_for_status()
+        return response.json().get("token")
+
+async def trigger_and_get_scan(image: str, token: str) -> dict:
+    headers = {"Authorization": f"Bearer {token}"}
+    image_url = f"{AQUA_SCAN_URL}/{image.lstrip('/')}"
+    async with httpx.AsyncClient() as client:
+        await client.post(image_url, headers=headers)
+        result = await client.get(image_url, headers=headers)
+        if result.status_code == 200:
+            return result.json()
+        return {"error": f"Failed to scan {image}"}
+
+
+
 
 
