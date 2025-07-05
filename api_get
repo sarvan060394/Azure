@@ -404,3 +404,15 @@ async def get_existing_scan_report(image: str, token: str) -> dict:
             result = response.json()
             return result if result.get("scan_error", "") == "" else {"error": result.get("scan_error")}
         return {"error": f"Failed to fetch report for {image}"}
+
+
+for cluster_data in response.values():
+    if not isinstance(cluster_data, dict):
+        continue
+    for ns_data in cluster_data.values():
+        if not isinstance(ns_data, dict):
+            continue
+        image_usage = ns_data.get("image_usage", {})
+
+
+print("DEBUG ns_data =", ns_data, type(ns_data))
