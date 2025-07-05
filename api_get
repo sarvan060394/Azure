@@ -544,4 +544,83 @@ return {
     "resource_usage": resource_usage
 }
 
+*****************************************************
+
+import os
+import asyncio
+import re
+from utils.ocp_auth import get_dyn_client_from_url
+from services.aqua_service import get_aqua_token, get_existing_scan_report
+
+async def get_images_across_clusters(cluster_urls, namespaces):
+    all_images = set()
+    image_usage_map = {}
+    skipped_images = []
+
+    # Step 1: Collect all images and their usage across clusters and namespaces
+    for url in cluster_urls:
+        try:
+            dyn_client = get_dyn_client_from_url(url)
+
+            for ns in namespaces:
+                ns_data = get_images_by_namespace(dyn_client, ns)
+                for image in ns_data["all_images"]:
+                    all_images.add(image)
+                    if image not in image_usage_map:
+                        image_usage_map[image] = ns_data["image_usage"].get(image, {})
+                    else:
+                        # Merge usage if already exists
+                        for key in ["Pods", "Deployments", "DeploymentConfigs"]:
+                            image_usage_map[image].setdefault(key, [])
+                            image_usage_map[image][key].extend(ns_data["image_usage"].get(image, {}).get(key, []))
+
+        except Exception as e:
+            skipped_images.append({
+                "image": f"Cluster: {url}",
+                "error": str(e)
+            })
+
+    # Step 2: Get Aqua Token
+    aqua_username = os.getenv("AQUA_USERNAME")
+    aqua_password = os.getenv("AQUA_PASSWORD")
+    token = await get_aqua_token(aqua_username, aqua_password)
+
+    # Step 3: Fetch reports in parallel
+    scan_tasks = [get_existing_scan_report(img, token) for img in all_images]
+    scan_reports = await asyncio.gather(*scan_tasks)
+    image_report_map = dict(zip(all_images, scan_reports))
+
+    # Step 4: Process vulnerabilities
+    vulnerable_images = []
+
+    for image, report in image_report_map.items():
+        if not report or "error" in report:
+            skipped_images.append({
+                "image": image,
+                "error": report.get("error", "unknown error")
+            })
+            continue
+
+        fixed_cves = []
+        for cve in report.get("cves", []):
+            if cve.get("fix_version"):
+                fixed_cves.append({
+                    "name": cve.get("name"),
+                    "severity": cve.get("severity"),
+                    "fix_version": cve.get("fix_version"),
+                    "file": cve.get("file"),
+                    "url": cve.get("url")
+                })
+
+        if fixed_cves:
+            vulnerable_images.append({
+                "image": image,
+                "fixes": fixed_cves,
+                "used_by": image_usage_map.get(image, {})
+            })
+
+    return {
+        "vulnerable_images": vulnerable_images,
+        "skipped_images": skipped_images
+    }
 
