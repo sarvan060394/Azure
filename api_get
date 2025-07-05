@@ -240,24 +240,9 @@ def get_images_by_namespace(dyn_client, namespace: str) -> dict:
     result["all_images"] = sorted(result["all_images"])
     return result
 
------------------------------************************ User Inputs *****************------------------------
-
-from fastapi import APIRouter, Query
-from services.image_service import get_images_across_clusters
-
-router = APIRouter()
-
-@router.get("/get-images")
-def get_images(
-    openshift_cluster_urls: str = Query(..., description="Comma-separated OpenShift cluster URLs"),
-    namespaces: str = Query(..., description="Comma-separated namespaces")
-):
-    cluster_list = [url.strip() for url in openshift_cluster_urls.split(",") if url.strip()]
-    namespace_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
-    return get_images_across_clusters(cluster_list, namespace_list)
+---------- ******* scan **********-------------------------
 
 
---------;;;;;;;---------
 from fastapi import APIRouter, Query
 from services.image_service import get_images_across_clusters
 
@@ -272,12 +257,13 @@ async def get_images(
     namespace_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
     return await get_images_across_clusters(cluster_list, namespace_list)
 
+*******************************************************************
 
 import os
 import asyncio
 import re
 from utils.ocp_auth import get_dyn_client_from_url
-from services.aqua_service import get_aqua_token, trigger_and_get_scan
+from services.aqua_service import get_aqua_token, get_existing_scan_report
 
 async def get_images_across_clusters(cluster_urls, namespaces):
     response = {}
@@ -294,7 +280,6 @@ async def get_images_across_clusters(cluster_urls, namespaces):
                 cluster_data[ns] = ns_data
 
             response[url] = cluster_data
-
         except Exception as e:
             response[url] = {"error": str(e)}
 
@@ -303,30 +288,46 @@ async def get_images_across_clusters(cluster_urls, namespaces):
     aqua_password = os.getenv("AQUA_PASSWORD")
     token = await get_aqua_token(aqua_username, aqua_password)
 
-    # Run scans in parallel
-    scan_tasks = [trigger_and_get_scan(img, token) for img in all_images]
-    scan_results = await asyncio.gather(*scan_tasks)
-    scan_result_map = dict(zip(all_images, scan_results))
+    # Fetch reports in parallel
+    scan_tasks = [get_existing_scan_report(img, token) for img in all_images]
+    scan_reports = await asyncio.gather(*scan_tasks)
+    image_report_map = dict(zip(all_images, scan_reports))
 
-    # Inject scan results
-    vulnerable_images = []
+    # Analyze reports and build final structure
+    vulnerable_images_with_fixes = []
+
     for cluster_data in response.values():
         for ns_data in cluster_data.values():
             image_usage = ns_data.get("image_usage", {})
             ns_data["vulnerabilities"] = {}
 
             for image in ns_data["all_images"]:
-                vuln = scan_result_map.get(image, {})
-                ns_data["vulnerabilities"][image] = vuln
+                report = image_report_map.get(image, {})
+                ns_data["vulnerabilities"][image] = report
 
-                if any(vuln.get(level, 0) > 0 for level in ["critical", "high", "medium"]):
-                    vulnerable_images.append({
+                if not report or "error" in report:
+                    continue
+
+                fixed_cves = []
+                for cve in report.get("cves", []):
+                    fix = cve.get("fix_version")
+                    if fix:
+                        fixed_cves.append({
+                            "name": cve.get("name"),
+                            "severity": cve.get("severity"),
+                            "fix_version": fix,
+                            "file": cve.get("file"),
+                            "url": cve.get("url")
+                        })
+
+                if fixed_cves:
+                    vulnerable_images_with_fixes.append({
                         "image": image,
                         "used_by": image_usage.get(image, {}),
-                        "vulnerabilities": vuln
+                        "vulnerabilities": fixed_cves
                     })
 
-    response["vulnerable_images"] = vulnerable_images
+    response["vulnerable_images_with_fixes"] = vulnerable_images_with_fixes
     return response
 
 
@@ -376,7 +377,7 @@ def get_images_by_namespace(dyn_client, namespace: str) -> dict:
 
     result["all_images"] = sorted(result["all_images"])
     return result
-
+**********************************************************************************
 
 import httpx
 
@@ -394,17 +395,12 @@ async def get_aqua_token(username: str, password: str) -> str:
         response.raise_for_status()
         return response.json().get("token")
 
-async def trigger_and_get_scan(image: str, token: str) -> dict:
+async def get_existing_scan_report(image: str, token: str) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
     image_url = f"{AQUA_SCAN_URL}/{image.lstrip('/')}"
     async with httpx.AsyncClient() as client:
-        await client.post(image_url, headers=headers)
-        result = await client.get(image_url, headers=headers)
-        if result.status_code == 200:
-            return result.json()
-        return {"error": f"Failed to scan {image}"}
-
-
-
-
-
+        response = await client.get(image_url, headers=headers)
+        if response.status_code == 200:
+            result = response.json()
+            return result if result.get("scan_error", "") == "" else {"error": result.get("scan_error")}
+        return {"error": f"Failed to fetch report for {image}"}
