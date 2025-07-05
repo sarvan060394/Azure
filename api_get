@@ -454,3 +454,47 @@ for cluster_data in response.values():
                     "used_by": image_usage.get(image, {}),
                     "vulnerabilities": fixed_cves
                 })
+
+import httpx
+from urllib.parse import urljoin
+
+AQUA_BASE_URL = "https://gis-container-scan.bankofamerica.com/api/v1"
+AQUA_LOGIN_URL = f"{AQUA_BASE_URL}/login"
+AQUA_SCAN_URL = f"{AQUA_BASE_URL}/scanner/registry"
+
+async def get_aqua_token(username: str, password: str) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            AQUA_LOGIN_URL,
+            json={"id": username, "password": password},
+            headers={"Content-Type": "application/json"}
+        )
+        response.raise_for_status()
+        return response.json().get("token")
+
+def rewrite_image_url_for_aqua(image: str) -> str:
+    """
+    Converts OpenShift image URL into Aqua-compatible path.
+    From: registry-nonprod.sdi.crp.bnk.com/73717/imagename:tag
+    To:   registry-nonprod/73717/imagename:tag
+    """
+    parts = image.split('/')
+    if len(parts) >= 3:
+        registry_full = parts[0]
+        registry = registry_full.split('.')[0]  # only 'registry-nonprod'
+        path = '/'.join(parts[1:])
+        return f"{registry}/{path}"
+    return image  # fallback as-is
+
+async def get_existing_scan_report(image: str, token: str) -> dict:
+    headers = {"Authorization": f"Bearer {token}"}
+    aqua_image_path = rewrite_image_url_for_aqua(image)
+    image_url = urljoin(AQUA_SCAN_URL + "/", aqua_image_path)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(image_url, headers=headers)
+        if response.status_code == 200:
+            result = response.json()
+            return result if result.get("scan_error", "") == "" else {"error": result.get("scan_error")}
+        return {"error": f"Failed to fetch report for {image}"}
+
