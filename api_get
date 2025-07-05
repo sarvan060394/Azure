@@ -416,3 +416,41 @@ for cluster_data in response.values():
 
 
 print("DEBUG ns_data =", ns_data, type(ns_data))
+
+
+# Analyze reports and build final structure
+vulnerable_images_with_fixes = []
+
+for cluster_data in response.values():
+    for ns_data in cluster_data.values():
+        if not isinstance(ns_data, dict):
+            continue
+
+        image_usage = ns_data.get("image_usage", {})
+        ns_data["vulnerabilities"] = {}
+
+        for image in ns_data["all_images"]:
+            report = image_report_map.get(image, {})
+            ns_data["vulnerabilities"][image] = report
+
+            if not report or "error" in report:
+                continue
+
+            fixed_cves = []
+            for cve in report.get("cves", []):
+                fix = cve.get("fix_version")
+                if fix:
+                    fixed_cves.append({
+                        "name": cve.get("name"),
+                        "severity": cve.get("severity"),
+                        "fix_version": fix,
+                        "file": cve.get("file"),
+                        "url": cve.get("url")
+                    })
+
+            if fixed_cves:
+                vulnerable_images_with_fixes.append({
+                    "image": image,
+                    "used_by": image_usage.get(image, {}),
+                    "vulnerabilities": fixed_cves
+                })
