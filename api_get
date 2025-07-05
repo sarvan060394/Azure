@@ -498,3 +498,50 @@ async def get_existing_scan_report(image: str, token: str) -> dict:
             return result if result.get("scan_error", "") == "" else {"error": result.get("scan_error")}
         return {"error": f"Failed to fetch report for {image}"}
 
+vulnerable_images = []
+vulnerable_image_fixes = {}
+resource_usage = {}
+
+for cluster_data in response.values():
+    if not isinstance(cluster_data, dict):
+        continue
+
+    for ns_data in cluster_data.values():
+        if not isinstance(ns_data, dict):
+            continue
+
+        image_usage = ns_data.get("image_usage", {})
+        ns_data["vulnerabilities"] = {}
+
+        for image in ns_data["all_images"]:
+            report = image_report_map.get(image, {})
+            ns_data["vulnerabilities"][image] = report
+
+            if not report or "error" in report:
+                continue
+
+            fixed_cves = []
+            for cve in report.get("cves", []):
+                fix = cve.get("fix_version")
+                if fix:
+                    fixed_cves.append({
+                        "name": cve.get("name"),
+                        "severity": cve.get("severity"),
+                        "fix_version": fix,
+                        "file": cve.get("file"),
+                        "url": cve.get("url")
+                    })
+
+            if fixed_cves:
+                vulnerable_images.append(image)
+                vulnerable_image_fixes[image] = fixed_cves
+                resource_usage[image] = image_usage.get(image, {})
+
+# Final structured response to user
+return {
+    "vulnerable_images": sorted(set(vulnerable_images)),
+    "vulnerable_image_fixes": vulnerable_image_fixes,
+    "resource_usage": resource_usage
+}
+
+
