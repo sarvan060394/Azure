@@ -705,48 +705,71 @@ async def get_images_across_clusters(cluster_urls, namespaces):
     }
 
 
-Here's a polished and professional rewrite of your midyear self-appraisal points, maintaining clarity and technical accuracy:
 
 ---
 
-### **KUBES Platform Enhancements & Monitoring**
+@router.get("/get-images")
+async def get_images(
+    openshift_cluster_urls: str = Query("https://api.ocp-dev.com"),
+    namespaces: str = Query("default"),
+    dg_email: str = Query(..., description="Distribution group email to send results")
+):
+    cluster_list = [url.strip() for url in openshift_cluster_urls.split(",") if url.strip()]
+    namespace_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
+    result = await get_images_across_clusters(cluster_list, namespace_list)
 
-* Integrated Prometheus metrics for the KUBES application and successfully onboarded them into OpenShift for enhanced observability.
-* Configured email alerting for critical KUBES metrics using Prometheus alert rules and Alertmanager.
-* Designed and built Splunk dashboards to support monitoring and analytics for multiple KUBES client applications.
-* Conducted research and delivered a proof of concept on multistage Dockerfile implementation, resulting in a unified container image integrating multiple components of the KUBES app.
-* Implemented automatic certificate issuance and renewal for the KUBES application using Cert-Manager, improving operational efficiency and security.
-* Optimized Kafka deployment resource configurations within KUBES by conducting POD T-shirt sizing and fine-tuning CPU/memory requests and limits.
-* Enabled SSL for KUBES applications, enhancing end-to-end security, and supported successful production rollout.
-* Provided ongoing guidance and support to both KUBES and client teams for platform-related troubleshooting and issue resolution.
+    # Send email with result
+    await send_email_with_results(result, dg_email)
 
----
+    return result
+import smtplib
+import json
+from email.message import EmailMessage
+import ssl
+import os
 
-### **Sourcegraph Deployment & Automation**
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.yourorg.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USERNAME)
 
-* Authored a comprehensive runbook for Sourcegraph deployment, reviewed and validated by the vendor team.
-* Introduced a shared image model for the KUBES app to eliminate redundancy and reduce the overhead of managing multiple codebases.
-* Developed a reusable and generic Ansible playbook to automate Sourcegraph deployment across environments.
-* Played a key role in the Sourcegraph lifecycle—from deployment in DEV and QA environments to complete configuration and integration.
+async def send_email_with_results(result: dict, to_email: str):
+    subject = "OpenShift Vulnerability Report"
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = FROM_EMAIL
+    message["To"] = to_email
 
----
-Took ownership of the Sourcegraph deployment lifecycle, from environment setup in DEV and QA to full configuration and system integration
-Actively contributed to the full Sourcegraph deployment cycle—spanning initial setup in DEV/QA to advanced configuration and seamless integration
+    # Pretty JSON string as body
+    result_summary = json.dumps({
+        "vulnerable_images": result.get("vulnerable_images", []),
+        "image_fixes": result.get("image_fixes", {}),
+        "image_usage": result.get("image_usage", {}),
+        "skipped_images": result.get("skipped_images", [])
+    }, indent=2)
 
-Here’s a professional and polished rewrite of your points under **"ORG"** and **"E-Cards and Recognitions"**:
+    message.set_content(f"""✅ OpenShift Vulnerability Report
 
----
+{result_summary}
+""")
 
-### **ORG Contributions**
+    # Attach full JSON as file too
+    message.add_attachment(
+        result_summary.encode("utf-8"),
+        maintype="application",
+        subtype="json",
+        filename="vulnerability_report.json"
+    )
 
-1. **Led the development of the ImagePruner application** to streamline vulnerability management and automate stale image cleanup in OpenShift environments.
-2. **Analyzed and implemented a reliable solution** to enable CI/CD pipelines for OpenShift Knative serverless applications, addressing platform limitations with an effective workaround.
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(message)
+            print(f"✅ Email sent to {to_email}")
+    except Exception as e:
+        print(f"❌ Failed to send email to {to_email}: {e}")
 
----
-
-### **E-Cards and Recognitions**
-
-* **Recognized by the ECP team** for delivering an impactful solution that enabled pipeline support for OpenShift Knative serverless workloads.
-
----
 
