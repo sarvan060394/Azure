@@ -705,3 +705,48 @@ async def get_images_across_clusters(cluster_urls, namespaces):
     }
 
 
+Here's a polished and professional rewrite of your midyear self-appraisal points, maintaining clarity and technical accuracy:
+
+---
+
+### **KUBES Platform Enhancements & Monitoring**
+
+* Integrated Prometheus metrics for the KUBES application and successfully onboarded them into OpenShift for enhanced observability.
+* Configured email alerting for critical KUBES metrics using Prometheus alert rules and Alertmanager.
+* Designed and built Splunk dashboards to support monitoring and analytics for multiple KUBES client applications.
+* Conducted research and delivered a proof of concept on multistage Dockerfile implementation, resulting in a unified container image integrating multiple components of the KUBES app.
+* Implemented automatic certificate issuance and renewal for the KUBES application using Cert-Manager, improving operational efficiency and security.
+* Optimized Kafka deployment resource configurations within KUBES by conducting POD T-shirt sizing and fine-tuning CPU/memory requests and limits.
+* Enabled SSL for KUBES applications, enhancing end-to-end security, and supported successful production rollout.
+* Provided ongoing guidance and support to both KUBES and client teams for platform-related troubleshooting and issue resolution.
+
+---
+
+### **Sourcegraph Deployment & Automation**
+
+* Authored a comprehensive runbook for Sourcegraph deployment, reviewed and validated by the vendor team.
+* Introduced a shared image model for the KUBES app to eliminate redundancy and reduce the overhead of managing multiple codebases.
+* Developed a reusable and generic Ansible playbook to automate Sourcegraph deployment across environments.
+* Played a key role in the Sourcegraph lifecycle—from deployment in DEV and QA environments to complete configuration and integration.
+
+---
+Took ownership of the Sourcegraph deployment lifecycle, from environment setup in DEV and QA to full configuration and system integration
+Actively contributed to the full Sourcegraph deployment cycle—spanning initial setup in DEV/QA to advanced configuration and seamless integration
+
+Here’s a professional and polished rewrite of your points under **"ORG"** and **"E-Cards and Recognitions"**:
+
+---
+
+### **ORG Contributions**
+
+1. **Led the development of the ImagePruner application** to streamline vulnerability management and automate stale image cleanup in OpenShift environments.
+2. **Analyzed and implemented a reliable solution** to enable CI/CD pipelines for OpenShift Knative serverless applications, addressing platform limitations with an effective workaround.
+
+---
+
+### **E-Cards and Recognitions**
+
+* **Recognized by the ECP team** for delivering an impactful solution that enabled pipeline support for OpenShift Knative serverless workloads.
+
+---
+
