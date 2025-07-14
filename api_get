@@ -1066,3 +1066,132 @@ async def get_images(
         await send_email_with_results(result, dg_email)
 
     return result
+
+
+
+import os
+import asyncio
+from utils.ocp_auth import get_dyn_client_from_url
+from utils.namespace_utils import is_non_prod_namespace
+from services.namespace_service import get_images_by_namespace
+from services.aqua_service import get_aqua_token, get_existing_scan_report
+
+async def get_images_across_clusters(cluster_urls: list[str], namespace_list: list[str] = None):
+    all_images = set()
+    image_usage_map = {}
+    skipped_images = []
+
+    final_ns_map = {}  # {cluster_url: [non-prod namespaces]}
+
+    # Step 1: Resolve and filter namespaces per cluster
+    for cluster_url in cluster_urls:
+        try:
+            dyn_client = get_dyn_client_from_url(cluster_url)
+
+            if namespace_list:
+                input_ns = namespace_list
+            else:
+                ns_api = dyn_client.resources.get(api_version="v1", kind="Namespace")
+                input_ns = [ns.metadata.name for ns in ns_api.get().items]
+
+            non_prod_ns = []
+            for ns in input_ns:
+                try:
+                    if is_non_prod_namespace(dyn_client, ns):
+                        non_prod_ns.append(ns)
+                    else:
+                        skipped_images.append({
+                            "image": f"ns:{ns}",
+                            "error": f"Skipped prod namespace in {cluster_url}"
+                        })
+                except Exception as e:
+                    skipped_images.append({
+                        "image": f"ns:{ns}",
+                        "error": f"Namespace validation failed in {cluster_url}: {str(e)}"
+                    })
+
+            if not non_prod_ns:
+                skipped_images.append({
+                    "image": f"cluster:{cluster_url}",
+                    "error": "No non-prod namespaces found or accessible"
+                })
+                continue
+
+            final_ns_map[cluster_url] = non_prod_ns
+
+        except Exception as e:
+            skipped_images.append({
+                "image": f"cluster:{cluster_url}",
+                "error": f"Failed to connect: {str(e)}"
+            })
+
+    # Step 2: Loop through valid clusters/namespaces to gather images
+    for cluster_url, ns_list in final_ns_map.items():
+        dyn_client = get_dyn_client_from_url(cluster_url)
+
+        for ns in ns_list:
+            try:
+                ns_data = get_images_by_namespace(dyn_client, ns)
+
+                for image in ns_data["all_images"]:
+                    all_images.add(image)
+                    if image not in image_usage_map:
+                        image_usage_map[image] = []
+
+                    image_usage_map[image].append({
+                        "cluster": cluster_url,
+                        "namespace": ns,
+                        "resources": ns_data["image_usage"].get(image, {
+                            "Pods": [],
+                            "Deployments": [],
+                            "DeploymentConfigs": []
+                        })
+                    })
+
+            except Exception as e:
+                skipped_images.append({
+                    "image": f"cluster:{cluster_url}/ns:{ns}",
+                    "error": f"Failed to get image usage: {str(e)}"
+                })
+
+    # Step 3: Get Aqua token
+    token = await get_aqua_token(os.getenv("AQUA_USERNAME"), os.getenv("AQUA_PASSWORD"))
+
+    # Step 4: Get existing reports
+    scan_tasks = [get_existing_scan_report(image, token) for image in all_images]
+    reports = await asyncio.gather(*scan_tasks)
+    image_report_map = dict(zip(all_images, reports))
+
+    # Step 5: Analyze vulnerability and build result
+    vulnerable_images = []
+    image_fixes = {}
+
+    for image, report in image_report_map.items():
+        if not report or "error" in report or report.get("scan_error"):
+            skipped_images.append({
+                "image": image,
+                "error": report.get("error") or report.get("scan_error", "Unknown scan issue")
+            })
+            continue
+
+        cve_fixes = []
+        for cve in report.get("cves", []):
+            if cve.get("fix_version"):
+                cve_fixes.append({
+                    "name": cve.get("name"),
+                    "severity": cve.get("severity"),
+                    "fix_version": cve.get("fix_version"),
+                    "file": cve.get("file"),
+                    "url": cve.get("url")
+                })
+
+        if cve_fixes:
+            vulnerable_images.append(image)
+            image_fixes[image] = cve_fixes
+
+    return {
+        "vulnerable_images": vulnerable_images,
+        "image_fixes": image_fixes,
+        "image_usage": image_usage_map,
+        "skipped_images": skipped_images
+    }
