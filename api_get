@@ -1038,3 +1038,31 @@ for url, namespaces in final_ns_map.items():
                     "DeploymentConfigs": []
                 })
             })
+
+
+from typing import Optional
+from fastapi import APIRouter, Query
+from services.image_service import get_images_across_clusters
+from services.email_service import send_email_with_results
+
+router = APIRouter()
+
+@router.get("/get-images")
+async def get_images(
+    openshift_cluster_urls: str = Query("https://api.ocp-dev.com"),
+    namespaces: Optional[str] = Query(
+        None, description="Comma-separated namespaces (optional). If not given, will scan all non-prod namespaces."
+    ),
+    dg_email: Optional[str] = Query(
+        None, description="Optional: DG email to send vulnerability report"
+    )
+):
+    cluster_list = [url.strip() for url in openshift_cluster_urls.split(",") if url.strip()]
+    namespace_list = [ns.strip() for ns in namespaces.split(",")] if namespaces else None
+
+    result = await get_images_across_clusters(cluster_list, namespace_list)
+
+    if dg_email:
+        await send_email_with_results(result, dg_email)
+
+    return result
