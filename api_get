@@ -1325,3 +1325,22 @@ await send_email_with_results(
     json_filename="deleted_images.json"
 )
 
+def build_html_report(data: dict, title: str = "OpenShift Report") -> str:
+    def format_table(name, rows, headers):
+        if not rows:
+            return f"<h3>{name}</h3><p>No records found.</p>"
+        table = f"<h3>{name}</h3><table border='1'><tr>{''.join(f'<th>{h}</th>' for h in headers)}</tr>"
+        for row in rows:
+            table += "<tr>" + "".join(f"<td>{row.get(h, '')}</td>" for h in headers) + "</tr>"
+        table += "</table>"
+        return table
+
+    html = f"<html><body><h2>{title}</h2>"
+    html += format_table("Stale Images", [{"Image": img} for img in data.get("stale_images", [])], ["Image"])
+    html += format_table("Matched Pods", data.get("matched_pods", []), ["namespace", "pod_name", "image"])
+    html += format_table("Matched Deployments", data.get("matched_deployments", []), ["namespace", "deployment_name", "image"])
+    html += f"<p><b>Message:</b> {data.get('message', '')}</p>"
+    html += "</body></html>"
+    return html
+
+
