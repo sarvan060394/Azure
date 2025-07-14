@@ -1195,3 +1195,52 @@ async def get_images_across_clusters(cluster_urls: list[str], namespace_list: li
         "image_usage": image_usage_map,
         "skipped_images": skipped_images
     }
+
+
+import re
+from urllib.parse import urlparse
+import httpx
+
+AQUA_BASE_URL = "https://gis-container-scan.bankofamerica.com/api/v1"
+AQUA_SCAN_URL = f"{AQUA_BASE_URL}/scanner/registry"
+
+def rewrite_image_url_for_aqua(image: str) -> str:
+    """
+    Rewrite OpenShift image URL to Aqua scan report-compatible path.
+    Valid only for images starting with 'registry-nonprod.sdi.'
+    Strips out any '@sha256:...' parts and converts to:
+    registry/registry-nonprod/image/{image_path}/scan_result
+    """
+    if not image.startswith("registry-nonprod.sdi."):
+        return None
+
+    # Remove @sha if present
+    image = re.sub(r'@sha256:[a-zA-Z0-9]+', '', image)
+
+    parts = image.split('/')
+    if len(parts) < 3:
+        return None
+
+    registry = parts[0].split('.')[0]  # 'registry-nonprod'
+    path = '/'.join(parts[1:])
+
+    return f"registry/{registry}/image/{path}/scan_result"
+
+async def get_existing_scan_report(image: str, token: str) -> dict:
+    headers = {"Authorization": f"Bearer {token}"}
+    aqua_image_path = rewrite_image_url_for_aqua(image)
+
+    if not aqua_image_path:
+        return {"image": image, "error": "Image not eligible for scan (skipped)"}
+
+    image_url = f"{AQUA_SCAN_URL}/{aqua_image_path}"
+
+    async with httpx.AsyncClient(verify=False, timeout=20) as client:
+        try:
+            response = await client.get(image_url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            return {"image": image, "error": str(e)}
+        except Exception as e:
+            return {"image": image, "error": str(e)}
