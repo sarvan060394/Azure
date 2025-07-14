@@ -1014,3 +1014,27 @@ async def get_images_across_clusters(cluster_urls, input_namespaces=None):
         "image_usage": image_usage,
         "skipped_images": skipped_images
     }
+
+
+
+for url, namespaces in final_ns_map.items():
+    dyn_client = get_dyn_client_from_url(url)
+
+    for ns in namespaces:
+        ns_data = get_images_by_namespace(dyn_client, ns)  # returns all_images + image_usage
+
+        for image in ns_data["all_images"]:
+            all_images.add(image)
+
+            if image not in image_usage_map:
+                image_usage_map[image] = []
+
+            image_usage_map[image].append({
+                "cluster": url,
+                "namespace": ns,
+                "resources": ns_data["image_usage"].get(image, {
+                    "Pods": [],
+                    "Deployments": [],
+                    "DeploymentConfigs": []
+                })
+            })
