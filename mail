@@ -135,3 +135,41 @@ if dg_email:
         subject="Stale Image Cleanup Report",
         formatter=build_html_report_for_stale_images
     )
+
+def build_html_report_for_vulnerabilities(result: dict) -> str:
+    vulnerable_images = result.get("vulnerable_images", [])
+    image_fixes = result.get("image_fixes", {})
+    image_usage = result.get("image_usage", {})
+    skipped_images = result.get("skipped_images", [])
+
+    html = """
+    <html><body>
+    <h2>OpenShift Vulnerability Report</h2>
+    <h3>Vulnerable Images</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Image</th><th>Fix Count</th><th>Resources Using Image</th></tr>
+    """
+
+    for image in vulnerable_images:
+        fixes = image_fixes.get(image, [])
+        usage_entries = image_usage.get(image, [])
+        usage_str = "<br>".join([
+            f"<b>{entry.get('resource_type')}</b>: {entry.get('resource_name')} "
+            f"(Namespace: {entry.get('namespace')}, Cluster: {entry.get('cluster')})"
+            for entry in usage_entries
+        ])
+
+        html += f"<tr><td>{image}</td><td>{len(fixes)}</td><td>{usage_str}</td></tr>"
+
+    html += """
+    </table><br>
+    <h3>Skipped Images</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Image</th><th>Error</th></tr>
+    """
+
+    for entry in skipped_images:
+        html += f"<tr><td>{entry.get('image')}</td><td>{entry.get('error')}</td></tr>"
+
+    html += "</table></body></html>"
+    return html
