@@ -1,0 +1,137 @@
+import smtplib
+import json
+import ssl
+from email.message import EmailMessage
+from typing import Callable, Optional
+import os
+
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.yourorg.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USERNAME)
+
+async def send_email_with_results(
+    result: dict,
+    to_email: Optional[str],
+    subject: str,
+    formatter: Callable[[dict], str]
+):
+    if not to_email:
+        return  # email is optional, do nothing if not provided
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = FROM_EMAIL
+    message["To"] = to_email
+
+    # Plaintext fallback
+    message.set_content("Report attached as HTML and JSON.")
+
+    # HTML report
+    html_body = formatter(result)
+    message.add_alternative(html_body, subtype="html")
+
+    # JSON attachment
+    json_data = json.dumps(result, indent=2)
+    message.add_attachment(
+        json_data.encode("utf-8"),
+        maintype="application",
+        subtype="json",
+        filename="report.json"
+    )
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(message)
+            print(f"✅ Email sent to {to_email}")
+    except Exception as e:
+        print(f"❌ Failed to send email to {to_email}: {e}")
+
+
+def build_html_report_for_vulnerabilities(result: dict) -> str:
+    vulnerable_images = result.get("vulnerable_images", [])
+    image_fixes = result.get("image_fixes", {})
+    image_usage = result.get("image_usage", {})
+    skipped_images = result.get("skipped_images", [])
+
+    html = """
+    <html><body>
+    <h2>OpenShift Vulnerability Report</h2>
+    <h3>Vulnerable Images</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Image</th><th>Fix Count</th><th>Resources Using Image</th></tr>
+    """
+
+    for image in vulnerable_images:
+        fixes = image_fixes.get(image, [])
+        usage = image_usage.get(image, {})
+        usage_str = ", ".join([f"<b>{k}</b>: {', '.join(v)}" for k, v in usage.items() if v])
+        html += f"<tr><td>{image}</td><td>{len(fixes)}</td><td>{usage_str}</td></tr>"
+
+    html += """
+    </table><br>
+    <h3>Skipped Images</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Image</th><th>Error</th></tr>
+    """
+
+    for entry in skipped_images:
+        html += f"<tr><td>{entry.get('image')}</td><td>{entry.get('error')}</td></tr>"
+
+    html += "</table></body></html>"
+    return html
+
+
+def build_html_report_for_stale_images(result: dict) -> str:
+    stale_images = result.get("stale_images", [])
+    matched_pods = result.get("matched_pods", [])
+    matched_deployments = result.get("matched_deployments", [])
+    skipped_tags = result.get("skipped_tags", [])
+
+    html = """
+    <html><body>
+    <h2>Stale Image Cleanup Report</h2>
+    <h3>Stale Images</h3><ul>
+    """ + "".join(f"<li>{img}</li>" for img in stale_images) + "</ul>"
+
+    html += "<h3>Matched Pods</h3><table border='1'><tr><th>Namespace</th><th>Pod</th><th>Image</th></tr>"
+    for pod in matched_pods:
+        html += f"<tr><td>{pod['namespace']}</td><td>{pod['pod_name']}</td><td>{pod['image']}</td></tr>"
+    html += "</table>"
+
+    html += "<h3>Matched Deployments</h3><table border='1'><tr><th>Namespace</th><th>Deployment</th><th>Image</th></tr>"
+    for dep in matched_deployments:
+        html += f"<tr><td>{dep['namespace']}</td><td>{dep['deployment_name']}</td><td>{dep['image']}</td></tr>"
+    html += "</table>"
+
+    html += "<h3>Skipped Tags</h3><ul>" + "".join(f"<li>{tag}</li>" for tag in skipped_tags) + "</ul>"
+    html += "</body></html>"
+    return html
+
+
+from services.email_service import send_email_with_results
+from services.html_formatters import build_html_report_for_vulnerabilities
+
+if dg_email:
+    await send_email_with_results(
+        result=result,
+        to_email=dg_email,
+        subject="OpenShift Vulnerability Report",
+        formatter=build_html_report_for_vulnerabilities
+    )
+
+
+from services.email_service import send_email_with_results
+from services.html_formatters import build_html_report_for_stale_images
+
+if dg_email:
+    await send_email_with_results(
+        result=result,
+        to_email=dg_email,
+        subject="Stale Image Cleanup Report",
+        formatter=build_html_report_for_stale_images
+    )
