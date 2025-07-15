@@ -173,3 +173,55 @@ def build_html_report_for_vulnerabilities(result: dict) -> str:
 
     html += "</table></body></html>"
     return html
+
+def build_html_report_for_vulnerabilities(result: dict) -> str:
+    vulnerable_images = result.get("vulnerable_images", [])
+    image_fixes = result.get("image_fixes", {})
+    image_usage = result.get("image_usage", {})
+    skipped_images = result.get("skipped_images", [])
+
+    html = """
+    <html><body>
+    <h2>OpenShift Vulnerability Report</h2>
+    <h3>Vulnerable Images</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Image</th><th>Fix Count</th><th>Resources Using Image</th></tr>
+    """
+
+    for image in vulnerable_images:
+        fixes = image_fixes.get(image, [])
+        usage_entries = image_usage.get(image, [])
+
+        usage_str = ""
+        for entry in usage_entries:
+            cluster = entry.get("cluster", "-")
+            namespace = entry.get("namespace", "-")
+            resources = entry.get("resources", {})
+
+            usage_str += f"<b>Cluster:</b> {cluster}<br><b>Namespace:</b> {namespace}<br>"
+            for resource_type, names in resources.items():
+                if names:
+                    usage_str += f"<b>{resource_type}</b>: {', '.join(names)}<br>"
+            usage_str += "<br>"
+
+        html += f"""
+        <tr>
+            <td>{image}</td>
+            <td>{len(fixes)}</td>
+            <td>{usage_str}</td>
+        </tr>
+        """
+
+    html += """
+    </table><br>
+    <h3>Skipped Images</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Image</th><th>Error</th></tr>
+    """
+
+    for entry in skipped_images:
+        html += f"<tr><td>{entry.get('image')}</td><td>{entry.get('error')}</td></tr>"
+
+    html += "</table><br><p>Attached: Full vulnerability report (JSON)</p></body></html>"
+    return html
+
