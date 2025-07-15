@@ -225,3 +225,47 @@ def build_html_report_for_vulnerabilities(result: dict) -> str:
     html += "</table><br><p>Attached: Full vulnerability report (JSON)</p></body></html>"
     return html
 
+
+def build_html_report_for_stale_images(result: dict) -> str:
+    deleted_images = result.get("deleted_stale_images", [])
+    deleted_pods = result.get("deleted_pods", [])
+    deleted_dcs = result.get("deleted_deployment_configs", [])
+    skipped_tags = result.get("skipped_tags", [])
+    most_recent = result.get("most_recent", [])
+    message = result.get("message", "Registry cleanup completed.")
+
+    html = """
+    <html><body>
+    <h2>OpenShift Stale Image Cleanup Report</h2>
+    <p><b>Status:</b> {message}</p>
+    """.format(message=message)
+
+    def create_table(title, items, columns):
+        if not items:
+            return f"<h3>{title}</h3><p>None</p>"
+
+        table = f"<h3>{title}</h3><table border='1' cellpadding='6' cellspacing='0'><tr>"
+        for col in columns:
+            table += f"<th>{col}</th>"
+        table += "</tr>"
+
+        for item in items:
+            if isinstance(item, dict):
+                row = "".join([f"<td>{item.get(col, '')}</td>" for col in columns])
+            else:
+                row = f"<td colspan='{len(columns)}'>{item}</td>"
+            table += f"<tr>{row}</tr>"
+
+        table += "</table><br>"
+        return table
+
+    html += create_table("Deleted Stale Images", deleted_images, ["Image"])
+    html += create_table("Deleted Pods", deleted_pods, ["Namespace", "Pod Name"])
+    html += create_table("Deleted DeploymentConfigs", deleted_dcs, ["Namespace", "DeploymentConfig Name"])
+    html += create_table("Skipped Tags", skipped_tags, ["Tag"])
+    html += create_table("Most Recent Tags", most_recent, ["Tag"])
+
+    html += "<br><p>Attached: Full cleanup report (JSON)</p></body></html>"
+    return html
+
+
