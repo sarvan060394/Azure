@@ -268,4 +268,83 @@ def build_html_report_for_stale_images(result: dict) -> str:
     html += "<br><p>Attached: Full cleanup report (JSON)</p></body></html>"
     return html
 
+def build_html_report_for_stale_images(result: dict) -> str:
+    """
+    Builds HTML table for stale image cleanup report in a single table format.
+    """
+    deleted_images = result.get("deleted_stale_images", [])
+    deleted_pods = result.get("deleted_pods", [])
+    deleted_dc = result.get("deleted_deployment_configs", [])
+    skipped_tags = result.get("skipped_tags", [])
+    most_recent = result.get("most_recent", [])
+    message = result.get("message", "")
+
+    html = """
+    <html>
+    <body>
+    <h2>OpenShift Stale Image Cleanup Report</h2>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr>
+            <th><b>Type</b></th>
+            <th><b>Namespace</b></th>
+            <th><b>Name / Image / Tag</b></th>
+        </tr>
+    """
+
+    for image in deleted_images:
+        html += f"""
+        <tr>
+            <td><b>Deleted Image</b></td>
+            <td>-</td>
+            <td>{image}</td>
+        </tr>
+        """
+
+    for pod in deleted_pods:
+        html += f"""
+        <tr>
+            <td><b>Deleted Pod</b></td>
+            <td>{pod.get("namespace", "-")}</td>
+            <td>{pod.get("pod_name", "-")}</td>
+        </tr>
+        """
+
+    for dc in deleted_dc:
+        html += f"""
+        <tr>
+            <td><b>Deleted DeploymentConfig</b></td>
+            <td>{dc.get("namespace", "-")}</td>
+            <td>{dc.get("deployment_name", "-")}</td>
+        </tr>
+        """
+
+    for tag in skipped_tags:
+        html += f"""
+        <tr>
+            <td><b>Skipped Tag</b></td>
+            <td>-</td>
+            <td>{tag}</td>
+        </tr>
+        """
+
+    for tag in most_recent:
+        html += f"""
+        <tr>
+            <td><b>Most Recent Tag</b></td>
+            <td>-</td>
+            <td>{tag}</td>
+        </tr>
+        """
+
+    html += f"""
+    </table>
+    <br><p><b>Summary:</b> {message}</p>
+    <p>Attached: Full cleanup report (JSON)</p>
+    </body>
+    </html>
+    """
+
+    return html
+
+
 
