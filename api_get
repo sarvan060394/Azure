@@ -1344,3 +1344,139 @@ def build_html_report(data: dict, title: str = "OpenShift Report") -> str:
     return html
 
 
+
+def remove_deployment(dyn_client, deployment_namespace: str, deployment_name: str):
+    """Removes a Kubernetes Deployment."""
+    logger.info(f"Removing deployment {deployment_name} in namespace {deployment_namespace}")
+    try:
+        dyn_client.resources.get(
+            api_version="apps/v1",
+            kind="Deployment"
+        ).delete(namespace=deployment_namespace, name=deployment_name)
+        logger.info(f"✔️ Deleted deployment {deployment_name} in namespace {deployment_namespace}")
+    except Exception as e:
+        logger.error(f"Error removing deployment {deployment_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error removing deployment: {e}")
+
+
+def remove_statefulset(dyn_client, sts_namespace: str, sts_name: str):
+    """Removes a Kubernetes StatefulSet."""
+    logger.info(f"Removing statefulset {sts_name} in namespace {sts_namespace}")
+    try:
+        dyn_client.resources.get(
+            api_version="apps/v1",
+            kind="StatefulSet"
+        ).delete(namespace=sts_namespace, name=sts_name)
+        logger.info(f"✔️ Deleted statefulset {sts_name} in namespace {sts_namespace}")
+    except Exception as e:
+        logger.error(f"Error removing statefulset {sts_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error removing statefulset: {e}")
+
+if delete_operation:
+    deleted_images              = []
+    deleted_deployment_configs  = []
+    deleted_deployments         = []          # NEW
+    deleted_statefulsets        = []          # NEW
+    deleted_pods                = []
+
+    # --- delete images in registry (already present) ---
+    for tag, image_identifier in stale_images.items():
+        ...
+
+    # --- delete OpenShift DeploymentConfigs (already present) ---
+    for dc in matched_deployment_configs:
+        await loop.run_in_executor(
+            executor,
+            remove_deployment_config,
+            dyn_client,
+            dc["namespace"],
+            dc["deployment_name"]
+        )
+        deleted_deployment_configs.append(dc)
+
+    # --- delete K8s Deployments (NEW) ---
+    for dep in matched_k8s_deployments:
+        await loop.run_in_executor(
+            executor,
+            remove_deployment,
+            dyn_client,
+            dep["namespace"],
+            dep["deployment_name"]
+        )
+        deleted_deployments.append(dep)
+
+    # --- delete StatefulSets (NEW) ---
+    for sts in matched_statefulsets:
+        await loop.run_in_executor(
+            executor,
+            remove_statefulset,
+            dyn_client,
+            sts["namespace"],
+            sts["statefulset_name"]
+        )
+        deleted_statefulsets.append(sts)
+
+    # --- delete Pods (already present) ---
+    for pod in matched_pods:
+        ...
+
+
+
+return {
+    "deleted_stale_images": deleted_images,
+    "deleted_pods": deleted_pods,
+    "deleted_deployment_configs": deleted_deployment_configs,
+    "deleted_deployments": deleted_deployments,       # NEW
+    "deleted_statefulsets": deleted_statefulsets,     # NEW
+    "skipped_tags": skipped_tags,
+    "most_recent": keep_tags,
+    "message": "Registry cleaning process completed with deletion.",
+    "execution_time_seconds": round(end - start, 2)
+}
+
+
+
+def build_html_report_for_stale_images(result: dict) -> str:
+    table_rows = []
+
+    for img in result.get("deleted_stale_images", []):
+        table_rows.append(("Deleted Image", "-", img))
+
+    for pod in result.get("deleted_pods", []):
+        table_rows.append(("Deleted Pod", pod["namespace"], pod["pod_name"]))
+
+    for dc in result.get("deleted_deployment_configs", []):
+        table_rows.append(("Deleted DeploymentConfig", dc["namespace"], dc["deployment_name"]))
+
+    for dep in result.get("deleted_deployments", []):
+        table_rows.append(("Deleted Deployment", dep["namespace"], dep["deployment_name"]))
+
+    for sts in result.get("deleted_statefulsets", []):
+        table_rows.append(("Deleted StatefulSet", sts["namespace"], sts["statefulset_name"]))
+
+    for tag in result.get("skipped_tags", []):
+        table_rows.append(("Skipped Tag", "-", tag))
+
+    for tag in result.get("most_recent", []):
+        table_rows.append(("Most Recent Tag", "-", tag))
+
+    # Build HTML
+    html = """
+    <html><body>
+    <h2>Stale Image Cleanup Report</h2>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Type</th><th>Namespace</th><th>Name / Image / Tag</th></tr>
+    """
+    for t, ns, name in table_rows:
+        html += f"<tr><td><b>{t}</b></td><td>{ns}</td><td>{name}</td></tr>"
+    html += """
+    </table>
+    <br><p><b>Status:</b> {msg}</p>
+    <p>Attached: Full cleanup report (JSON)</p>
+    </body></html>
+    """.format(msg=result.get("message", "Registry cleanup done."))
+
+    return html
+
+
+
