@@ -1479,4 +1479,137 @@ def build_html_report_for_stale_images(result: dict) -> str:
     return html
 
 
+****************************************************************
+
+v1_pods = dyn_client.resources.get(api_version="v1", kind="Pod")
+v1_deployments = dyn_client.resources.get(api_version="apps.openshift.io/v1", kind="DeploymentConfig")
+v1_k8s_deployments = dyn_client.resources.get(api_version="apps/v1", kind="Deployment")
+v1_statefulsets = dyn_client.resources.get(api_version="apps/v1", kind="StatefulSet")
+v1_projects = dyn_client.resources.get(api_version="project.openshift.io/v1", kind="Project")
+
+
+matched_deployment_configs = []
+matched_k8s_deployments = []
+matched_statefulsets = []
+matched_pods = []
+
+for ns in namespaces:
+    # Match DeploymentConfigs
+    dc_list = await loop.run_in_executor(executor, get_deploymentconfig_in_namespace, v1_deployments, ns)
+    if dc_list:
+        for dc in dc_list.items:
+            for container in dc.spec.template.spec.containers:
+                if container.image in all_stale_images:
+                    matched_deployment_configs.append({
+                        "namespace": ns,
+                        "deployment_name": dc.metadata.name,
+                        "image": container.image
+                    })
+
+    # Match Deployments
+    deployments = await loop.run_in_executor(executor, get_k8s_deployments_in_namespace, v1_k8s_deployments, ns)
+    if deployments:
+        for deployment in deployments.items:
+            for container in deployment.spec.template.spec.containers:
+                if container.image in all_stale_images:
+                    matched_k8s_deployments.append({
+                        "namespace": ns,
+                        "deployment_name": deployment.metadata.name,
+                        "image": container.image
+                    })
+
+    # Match StatefulSets
+    sts_list = await loop.run_in_executor(executor, get_statefulsets_in_namespace, v1_statefulsets, ns)
+    if sts_list:
+        for sts in sts_list.items:
+            for container in sts.spec.template.spec.containers:
+                if container.image in all_stale_images:
+                    matched_statefulsets.append({
+                        "namespace": ns,
+                        "statefulset_name": sts.metadata.name,
+                        "image": container.image
+                    })
+
+    # Match Pods
+    pods = await loop.run_in_executor(executor, get_pods_in_namespace, v1_pods, ns)
+    if pods:
+        for pod in pods.items:
+            for container in pod.spec.containers:
+                if container.image in all_stale_images:
+                    matched_pods.append({
+                        "namespace": ns,
+                        "pod_name": pod.metadata.name,
+                        "image": container.image
+                    })
+
+deleted_k8s_deployments = []
+deleted_statefulsets = []
+
+for deployment in matched_k8s_deployments:
+    await loop.run_in_executor(
+        executor,
+        remove_k8s_deployment,
+        dyn_client,
+        deployment["namespace"],
+        deployment["deployment_name"]
+    )
+    deleted_k8s_deployments.append(deployment)
+
+for sts in matched_statefulsets:
+    await loop.run_in_executor(
+        executor,
+        remove_statefulset,
+        dyn_client,
+        sts["namespace"],
+        sts["statefulset_name"]
+    )
+    deleted_statefulsets.append(sts)
+
+
+
+return {
+    "deleted_stale_images": deleted_images,
+    "deleted_pods": deleted_pods,
+    "deleted_deployment_configs": deleted_deployment_configs,
+    "deleted_k8s_deployments": deleted_k8s_deployments,
+    "deleted_statefulsets": deleted_statefulsets,
+    "skipped_tags": keep_tags,
+    "most_recent": keep_images,
+    "message": "Registry cleaning process completed with deletion.",
+    "execution_time_seconds": round(end - start, 2)
+}
+
+
+
+def get_k8s_deployments_in_namespace(v1_deployments, namespace):
+    try:
+        return v1_deployments.get(namespace=namespace)
+    except Exception as e:
+        logger.error(f"Failed to get apps/v1 deployments in {namespace}: {e}")
+        return None
+
+def remove_k8s_deployment(dyn_client, namespace, name):
+    try:
+        logger.info(f"Removing apps/v1 Deployment {name} in namespace {namespace}")
+        dyn_client.resources.get(api_version="apps/v1", kind="Deployment").delete(namespace=namespace, name=name)
+        logger.info(f"Deleted apps/v1 Deployment {name} in {namespace}")
+    except Exception as e:
+        logger.error(f"Error removing apps/v1 Deployment: {e}")
+        raise HTTPException(status_code=500, detail=f"Error removing apps/v1 Deployment: {e}")
+
+def get_statefulsets_in_namespace(v1_statefulsets, namespace):
+    try:
+        return v1_statefulsets.get(namespace=namespace)
+    except Exception as e:
+        logger.error(f"Failed to get StatefulSets in {namespace}: {e}")
+        return None
+
+def remove_statefulset(dyn_client, namespace, name):
+    try:
+        logger.info(f"Removing StatefulSet {name} in namespace {namespace}")
+        dyn_client.resources.get(api_version="apps/v1", kind="StatefulSet").delete(namespace=namespace, name=name)
+        logger.info(f"Deleted StatefulSet {name} in {namespace}")
+    except Exception as e:
+        logger.error(f"Error removing StatefulSet: {e}")
+        raise HTTPException(status_code=500, detail=f"Error removing StatefulSet: {e}")
 
