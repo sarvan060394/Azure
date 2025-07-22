@@ -44,3 +44,76 @@ def log_event(event_name: str, details: dict, level: str = "info"):
         logger.critical(msg, extra=extra)
     else:
         logger.info(msg, extra=extra)
+
+
+*********************uuid*************************
+
+# app/utils/request_context.py
+
+import contextvars
+from uuid import uuid4
+
+# Context variable to store per-request values
+request_id_ctx_var = contextvars.ContextVar("request_id", default=None)
+user_ctx_var = contextvars.ContextVar("request_user", default="anonymous")
+
+def generate_request_id() -> str:
+    request_id = str(uuid4())
+    request_id_ctx_var.set(request_id)
+    return request_id
+
+def get_request_id() -> str:
+    return request_id_ctx_var.get()
+
+def set_request_user(user: str):
+    user_ctx_var.set(user)
+
+def get_request_user() -> str:
+    return user_ctx_var.get()
+
+
+from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from app.utils.request_context import generate_request_id, set_request_user
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        generate_request_id()
+
+        user = request.headers.get("X-User", "anonymous")
+        set_request_user(user)
+
+        response = await call_next(request)
+        return response
+
+app = FastAPI()
+app.add_middleware(RequestIDMiddleware)
+
+
+
+from app.utils.request_context import get_request_id, get_request_user
+
+def log_event(event_name: str, details: dict, level: str = "info"):
+    extra = {
+        "event_name": event_name,
+        "extra_data": {
+            **details,
+            "request_id": get_request_id(),
+            "request_user": get_request_user()
+        }
+    }
+    msg = details.get("message", event_name)
+
+    if level == "debug":
+        logger.debug(msg, extra=extra)
+    elif level == "info":
+        logger.info(msg, extra=extra)
+    elif level == "warning":
+        logger.warning(msg, extra=extra)
+    elif level == "error":
+        logger.error(msg, extra=extra)
+    elif level == "critical":
+        logger.critical(msg, extra=extra)
+    else:
+        logger.info(msg, extra=extra)
+
