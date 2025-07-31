@@ -1,0 +1,58 @@
+Sure! Below is an example of an `instructions.md` file designed as a prompt to guide Copilot (or a similar agent) through all the needed steps when a user wants to "create app using patterns." This template is written to ensure clear, stepwise guidance and user interaction, adaptable to your Copilot+Patterns plugin integration.
+
+# instructions.md
+
+## Title
+**App Creation Workflow Using Patterns Extension**
+
+## Trigger
+> When a user requests to "create app using patterns", follow these steps precisely to gather necessary inputs and execute the Patterns plugin.
+
+### Step 1: Collect Required Inputs
+
+1. **Prompt the user to provide essential details:**
+    - Ask: "Which programming language would you like to use for the app (e.g., Python, JavaScript, Java, etc.)?"
+    - Ask: "What should be the application interface type (e.g., web, mobile, CLI)?"
+    - Ask: "Do you want to include authentication (Yes/No)?"
+    - Ask: "Please provide a short description of the app's purpose and any main features you'd like."
+
+### Step 2: Gather Language-Specific Information
+
+2. **Based on the language selection, request further details:**
+    - **If Python:**  
+      Ask: "Should the app use any specific frameworks (e.g., Flask, Django)?"
+    - **If JavaScript:**  
+      Ask: "Should the app target Node.js, browser (React/Vue), or both?"
+    - **If Java:**  
+      Ask: "Do you want to use Spring Boot or another framework?"
+    - *(Expand/add more language-specific prompts as needed)*
+
+### Step 3: Invoke Patterns Plugin
+
+3. **Summarize all gathered inputs for confirmation:**  
+    - Present the collected details to the user:  
+      "You have chosen:  
+      - Language: {language}  
+      - App Type: {interface type}  
+      - Authentication: {auth}  
+      - Description: {description}  
+      - Additional settings: {any language-specific info}"
+
+    - Ask for final confirmation:  
+      "Should I proceed to create the app using the above settings? (Yes/No)"
+
+4. **If confirmed, invoke the Patterns extension in Copilot chat:**
+    - Use the following invocation format:  
+      `@patterns create --language {language} --type {interface} --auth {auth} --desc "{description}" {additional_flags}`
+
+5. **Display Patterns extension output to the user and provide the next steps or actionable links/files.**
+
+## Notes
+
+- If at any step the user provides unclear or insufficient input, ask clarifying questions before proceeding.
+- Always confirm choices before plugin execution.
+- Ensure compliance with any Copilot or organizational restrictions while interacting with plugins.
+
+This file can be adapted per your organization's workflow and expanded with additional prompts or constraints as required for your Patterns plugin integration.
+
+Sources
