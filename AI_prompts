@@ -56,3 +56,166 @@ Sure! Below is an example of an `instructions.md` file designed as a prompt to g
 This file can be adapted per your organization's workflow and expanded with additional prompts or constraints as required for your Patterns plugin integration.
 
 Sources
+
+
+import os
+
+def generate_service(service_name):
+    base_dir = os.path.join(os.getcwd(), service_name)
+    os.makedirs(base_dir, exist_ok=True)
+
+    # Minimal Spring Boot structure
+    src_main = os.path.join(base_dir, "src/main/java/com/example")
+    src_resources = os.path.join(base_dir, "src/main/resources")
+    os.makedirs(src_main, exist_ok=True)
+    os.makedirs(src_resources, exist_ok=True)
+
+    # pom.xml
+    pom = f"""
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>{service_name}</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.2.0</version>
+  </parent>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+"""
+    with open(os.path.join(base_dir, "pom.xml"), "w") as f:
+        f.write(pom)
+
+    # Application.java
+    app_file = os.path.join(src_main, f"{service_name.capitalize()}Application.java")
+    with open(app_file, "w") as f:
+        f.write(f"""
+package com.example;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.bind.annotation.*;
+
+@SpringBootApplication
+@RestController
+public class {service_name.capitalize()}Application {{
+
+    @GetMapping("/hello")
+    public String hello() {{
+        return "Hello from {service_name}!";
+    }}
+
+    public static void main(String[] args) {{
+        SpringApplication.run({service_name.capitalize()}Application.class, args);
+    }}
+}}
+""")
+
+    return base_dir
+
+
+
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
+from provision_simple_service import generate_service
+import os
+
+app = FastAPI(title="Spring Boot MCP Server")
+
+class GenerateServiceRequest(BaseModel):
+    serviceName: str
+
+class GenerateServiceResponse(BaseModel):
+    status: str
+    outputPath: str
+
+@app.post("/generate-service", response_model=GenerateServiceResponse)
+def generate_service_tool(req: GenerateServiceRequest):
+    path = generate_service(req.serviceName)
+    return GenerateServiceResponse(
+        status=f"Spring Boot microservice '{req.serviceName}' generated successfully!",
+        outputPath=os.path.abspath(path)
+    )
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8081)
+
+{
+  "name": "generate-simple-spring-boot",
+  "description": "Generates a minimal Spring Boot microservice with a Hello World endpoint",
+  "version": "1.0.0",
+  "entry_point": "http://localhost:8081/generate-service",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "serviceName": {
+        "type": "string",
+        "description": "Name of the microservice"
+      }
+    },
+    "required": ["serviceName"]
+  }
+}
+
+
+{
+  "name": "springboot-generator",
+  "version": "1.0.0",
+  "description": "Generates simple Spring Boot microservices",
+  "intents": [
+    {
+      "intent": "create-springboot-service",
+      "examples": [
+        "create a spring boot microservice",
+        "generate a hello world spring boot service",
+        "new spring boot project {{serviceName}}"
+      ],
+      "tool": "generate-simple-spring-boot",
+      "parameters": {
+        "serviceName": {
+          "type": "string",
+          "prompt": "What is the name of your service?",
+          "required": true
+        }
+      }
+    }
+  ]
+}
+
+
+
+"copilot-agent.tools": [
+  {
+    "name": "springboot-generator",
+    "manifest": "/absolute/path/springboot-mcp/mcp_tool_manifest.json",
+    "instructions": "/absolute/path/springboot-mcp/instructions.json"
+  }
+]
+
+
+
+
