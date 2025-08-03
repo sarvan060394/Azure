@@ -43,25 +43,21 @@ def clone_repo(req: CloneRequest):
 MCP tool:
 
 import requests
-import os
 
-def call_clone_api():
-    current_dir = os.getcwd()
-    target_path = os.path.join(current_dir, "cloned_template")
+@mcp.tool(name="clone_template", description="Clone template code from Bitbucket using FastAPI")
+def clone_template() -> dict:
+    try:
+        payload = {
+            "repo_url": "https://bitbucket.mycompany.com/scm/project/repo.git",
+            "branch": "develop",
+            "target_path": "./cloned_template"
+        }
 
-    payload = {
-        "repo_url": "https://bitbucket.mycompany.com/scm/project/repo.git",
-        "branch": "develop",
-        "target_path": target_path
-    }
+        response = requests.post("http://localhost:8000/clone", json=payload)
 
-    response = requests.post("http://localhost:8000/clone", json=payload)
-
-    if response.status_code == 200:
-        print("[MCP] Clone success:", response.json()["message"])
-    else:
-        print("[MCP] Clone failed:", response.text)
-
-if __name__ == "__main__":
-    call_clone_api()
-
+        if response.status_code == 200:
+            return {"result": response.json()["message"]}
+        else:
+            return {"error": response.text}
+    except Exception as e:
+        return {"error": str(e)}
