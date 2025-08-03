@@ -1,42 +1,49 @@
 Python api:
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import subprocess
 import os
 import shutil
-from urllib.parse import urlparse, urlunparse
+import stat
+import git
 
 app = FastAPI()
 
-# 🔐 Hardcoded credentials (secure this later via env vars or vault)
-BITBUCKET_USERNAME = "your_username"
-BITBUCKET_TOKEN = "your_access_token"
+# Hardcoded Bitbucket credentials
+USERNAME = "your_username"
+ACCESS_TOKEN = "your_bitbucket_app_password_or_token"
 
 class CloneRequest(BaseModel):
-    repo_url: str  # Example: https://bitbucket.mycompany.com/scm/project/repo.git
+    repo_url: str
     branch: str
     target_path: str
 
+def force_remove_readonly(func, path, _):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
 @app.post("/clone")
 def clone_repo(req: CloneRequest):
+    # Check if the target path already exists
+    if os.path.exists(req.target_path):
+        try:
+            shutil.rmtree(req.target_path, onerror=force_remove_readonly)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete existing directory: {e}")
+
+    # Build authenticated repo URL
+    if "@" in req.repo_url:
+        # already contains username/password (strip them)
+        prefix, rest = req.repo_url.split("@", 1)
+        req.repo_url = rest
+
+    auth_url = req.repo_url.replace("https://", f"https://{USERNAME}:{ACCESS_TOKEN}@")
+
     try:
-        # Inject credentials into repo URL
-        parsed_url = urlparse(req.repo_url)
-        authed_netloc = f"{BITBUCKET_USERNAME}:{BITBUCKET_TOKEN}@{parsed_url.netloc}"
-        authed_url = urlunparse(parsed_url._replace(netloc=authed_netloc))
+        git.Repo.clone_from(auth_url, req.target_path, branch=req.branch)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Git clone failed: {e}")
 
-        # Remove existing directory if exists
-        if os.path.exists(req.target_path):
-            shutil.rmtree(req.target_path)
-
-        subprocess.run(
-            ["git", "clone", "-b", req.branch, authed_url, req.target_path],
-            check=True
-        )
-
-        return {"status": "success", "message": f"Cloned repo to {req.target_path}"}
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"Git clone failed: {str(e)}")
+    return {"message": "Repository cloned successfully."}
 
 
 ********************************************************************************
