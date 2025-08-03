@@ -169,4 +169,61 @@ async def clone_repo(req: CloneRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Git clone failed: {e}")
 
+_______________________________________________________________________________________________________________
+
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
+import os, shutil, stat, git
+
+app = FastAPI()
+
+USERNAME = os.getenv("BITBUCKET_USERNAME", "your_username")
+ACCESS_TOKEN = os.getenv("BITBUCKET_TOKEN", "your_token")
+
+class CloneRequest(BaseModel):
+    repo_url: str
+    branch: str
+    target_path: str
+
+def force_remove_readonly(func, path, _):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+def clone_repo_task(repo_url: str, branch: str, target_path: str):
+    if os.path.exists(target_path):
+        shutil.rmtree(target_path, onerror=force_remove_readonly)
+
+    if "@" in repo_url:
+        _, rest = repo_url.split("@", 1)
+        repo_url = rest
+
+    auth_url = repo_url.replace("https://", f"https://{USERNAME}:{ACCESS_TOKEN}@")
+    git.Repo.clone_from(auth_url, target_path, branch=branch)
+
+@app.post("/clone")
+async def clone_repo(req: CloneRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(clone_repo_task, req.repo_url, req.branch, req.target_path)
+    return {"message": "Cloning started in background."}
+
+
+
+@tool(
+    name="clone_template",
+    description="Clone template code from Bitbucket using FastAPI",
+)
+def clone_template(repo_url: str, branch: str, target_path: str) -> dict:
+    try:
+        payload = {
+            "repo_url": repo_url,
+            "branch": branch,
+            "target_path": target_path
+        }
+
+        print("Sending request to FastAPI...")
+        response = requests.post("http://localhost:8000/clone", json=payload, timeout=5)  # only needs short timeout now
+        response.raise_for_status()
+
+        return {"result": response.json()["message"]}
+    except Exception as e:
+        raise RuntimeError(f"Clone failed: {e}")
 
