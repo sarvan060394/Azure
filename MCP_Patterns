@@ -1,0 +1,61 @@
+Python api:
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import subprocess
+import os
+import shutil
+from typing import Optional
+
+app = FastAPI()
+
+class CloneRequest(BaseModel):
+    repo_url: str
+    branch: str
+    target_path: str  # MCP will give the path to clone into
+
+@app.post("/clone")
+def clone_repo(req: CloneRequest):
+    try:
+        # Remove target if already exists
+        if os.path.exists(req.target_path):
+            shutil.rmtree(req.target_path)
+
+        subprocess.run(
+            ["git", "clone", "-b", req.branch, req.repo_url, req.target_path],
+            check=True
+        )
+        return {"status": "success", "message": f"Cloned {req.repo_url} to {req.target_path}"}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+********************************************************************************
+MCP tool:
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import subprocess
+import os
+import shutil
+from typing import Optional
+
+app = FastAPI()
+
+class CloneRequest(BaseModel):
+    repo_url: str
+    branch: str
+    target_path: str  # MCP will give the path to clone into
+
+@app.post("/clone")
+def clone_repo(req: CloneRequest):
+    try:
+        # Remove target if already exists
+        if os.path.exists(req.target_path):
+            shutil.rmtree(req.target_path)
+
+        subprocess.run(
+            ["git", "clone", "-b", req.branch, req.repo_url, req.target_path],
+            check=True
+        )
+        return {"status": "success", "message": f"Cloned {req.repo_url} to {req.target_path}"}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=str(e))
