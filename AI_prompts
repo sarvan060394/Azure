@@ -218,4 +218,120 @@ if __name__ == "__main__":
 
 
 
+****************** Extension ******************************
+{
+  "name": "template-processor-extension",
+  "displayName": "Template Processor",
+  "description": "Collects AIT, SPK, and OCP URL via Webview UI",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onCommand:templateProcessor.openForm"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "templateProcessor.openForm",
+        "title": "Open Template Input Form"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^4.9.5",
+    "vscode": "^1.1.37"
+  }
+}
+
+--------------
+
+import * as vscode from 'vscode';
+
+export function activate(context: vscode.ExtensionContext) {
+  const outputChannel = vscode.window.createOutputChannel("Template Processor Logs");
+
+  const disposable = vscode.commands.registerCommand("templateProcessor.openForm", () => {
+    const panel = vscode.window.createWebviewPanel(
+      "templateInput",
+      "Template Processor Input",
+      vscode.ViewColumn.One,
+      { enableScripts: true }
+    );
+
+    panel.webview.html = getWebviewHtml();
+
+    panel.webview.onDidReceiveMessage(
+      message => {
+        if (message.command === 'submit') {
+          const { ait, spk, ocpurl } = message;
+
+          outputChannel.appendLine(`--- Template Inputs ---`);
+          outputChannel.appendLine(`AIT: ${ait}`);
+          outputChannel.appendLine(`SPK: ${spk}`);
+          outputChannel.appendLine(`OCP URL: ${ocpurl}`);
+          outputChannel.show();
+
+          vscode.window.showInformationMessage(
+            `Received:\nAIT: ${ait}\nSPK: ${spk}\nOCP URL: ${ocpurl}`
+          );
+
+          // Place logic here to use these values in your extension
+        }
+      },
+      undefined,
+      context.subscriptions
+    );
+  });
+
+  context.subscriptions.push(disposable);
+}
+
+function getWebviewHtml(): string {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Template Processor</title>
+    </head>
+    <body>
+      <h2>Enter Template Inputs</h2>
+      <label>AIT: <input type="text" id="ait" /></label><br><br>
+      <label>SPK: <input type="text" id="spk" /></label><br><br>
+      <label>OCP URL: <input type="text" id="ocpurl" /></label><br><br>
+      <button onclick="submit()">Submit</button>
+
+      <script>
+        const vscode = acquireVsCodeApi();
+        function submit() {
+          const ait = document.getElementById('ait').value;
+          const spk = document.getElementById('spk').value;
+          const ocpurl = document.getElementById('ocpurl').value;
+
+          vscode.postMessage({
+            command: 'submit',
+            ait,
+            spk,
+            ocpurl
+          });
+        }
+      </script>
+    </body>
+    </html>
+  `;
+}
+
+export function deactivate() {}
+
+
+
+
 
