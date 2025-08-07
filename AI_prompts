@@ -473,6 +473,40 @@ export function deactivate() {}
 
 
 ----
+import * as vscode from 'vscode';
+
+export function activate(context: vscode.ExtensionContext) {
+    const disposable = vscode.commands.registerCommand('templateprocessor.openForm', () => {
+        const panel = vscode.window.createWebviewPanel(
+            'templateProcessor',
+            'Template Processor',
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true
+            }
+        );
+
+        panel.webview.html = getWebviewContent();
+
+        panel.webview.onDidReceiveMessage(
+            message => {
+                if (message.command === 'submitForm') {
+                    const data = message.data;
+                    vscode.window.showInformationMessage(`Received AIT: ${data.ait}, SPK: ${data.spk}`);
+                    
+                    // ✅ Here you can call your MCP tool with the data
+                    console.log('Received form data:', data);
+
+                    // You could run a terminal command, call a Python tool, or trigger something else.
+                }
+            },
+            undefined,
+            context.subscriptions
+        );
+    });
+
+    context.subscriptions.push(disposable);
+}
 
 function getWebviewContent(): string {
     return `
@@ -480,13 +514,13 @@ function getWebviewContent(): string {
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Template Processor Form</title>
+        <title>Template Processor</title>
         <style>
             body {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #1e1e1e;
+                color: #ffffff;
                 padding: 20px;
-                background-color: #f4f4f4;
-                color: #333;
             }
 
             h1 {
@@ -496,27 +530,34 @@ function getWebviewContent(): string {
             }
 
             form {
-                background-color: #fff;
+                background-color: #2d2d2d;
                 padding: 20px;
                 border-radius: 10px;
                 max-width: 500px;
                 margin: auto;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
             }
 
             label {
                 display: block;
-                margin-bottom: 5px;
-                font-weight: bold;
+                margin-bottom: 6px;
+                font-weight: 600;
             }
 
             input {
                 width: 100%;
                 padding: 10px;
                 margin-bottom: 15px;
-                border: 1px solid #ccc;
+                border: 1px solid #444;
                 border-radius: 5px;
                 font-size: 14px;
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+
+            input:focus {
+                outline: none;
+                border-color: #007acc;
             }
 
             button {
@@ -540,48 +581,49 @@ function getWebviewContent(): string {
         <h1>Template Processor</h1>
         <form id="templateForm">
             <label for="ait">AIT:</label>
-            <input type="text" id="ait" name="ait" required>
+            <input type="text" id="ait" required>
 
             <label for="spk">SPK:</label>
-            <input type="text" id="spk" name="spk" required>
+            <input type="text" id="spk" required>
 
             <label for="repositoryName">Repository Name:</label>
-            <input type="text" id="repositoryName" name="repositoryName" required>
+            <input type="text" id="repositoryName" required>
 
             <label for="applicationName">Application Name:</label>
-            <input type="text" id="applicationName" name="applicationName" required>
+            <input type="text" id="applicationName" required>
 
             <label for="projectName">Project Name:</label>
-            <input type="text" id="projectName" name="projectName" required>
+            <input type="text" id="projectName" required>
 
             <label for="clusterName">Cluster Name:</label>
-            <input type="text" id="clusterName" name="clusterName" required>
+            <input type="text" id="clusterName" required>
 
             <label for="serviceId">Service ID:</label>
-            <input type="text" id="serviceId" name="serviceId" required>
+            <input type="text" id="serviceId" required>
 
             <label for="servicePassword">Service Password:</label>
-            <input type="password" id="servicePassword" name="servicePassword" required>
+            <input type="password" id="servicePassword" required>
 
             <button type="submit">Submit</button>
         </form>
 
         <script>
             const vscode = acquireVsCodeApi();
-            const form = document.getElementById('templateForm');
-            form.addEventListener('submit', (event) => {
-                event.preventDefault();
-                const formData = {
-                    ait: document.getElementById('ait').value,
-                    spk: document.getElementById('spk').value,
-                    repositoryName: document.getElementById('repositoryName').value,
-                    applicationName: document.getElementById('applicationName').value,
-                    projectName: document.getElementById('projectName').value,
-                    clusterName: document.getElementById('clusterName').value,
-                    serviceId: document.getElementById('serviceId').value,
-                    servicePassword: document.getElementById('servicePassword').value,
-                };
-                vscode.postMessage({ command: 'submitForm', data: formData });
+            document.getElementById('templateForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                vscode.postMessage({
+                    command: 'submitForm',
+                    data: {
+                        ait: document.getElementById('ait').value,
+                        spk: document.getElementById('spk').value,
+                        repositoryName: document.getElementById('repositoryName').value,
+                        applicationName: document.getElementById('applicationName').value,
+                        projectName: document.getElementById('projectName').value,
+                        clusterName: document.getElementById('clusterName').value,
+                        serviceId: document.getElementById('serviceId').value,
+                        servicePassword: document.getElementById('servicePassword').value
+                    }
+                });
             });
         </script>
     </body>
