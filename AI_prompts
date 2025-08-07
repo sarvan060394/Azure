@@ -339,107 +339,134 @@ export function deactivate() {}
 import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-  let disposable = vscode.commands.registerCommand('templateProcessor.openForm', () => {
-    const panel = vscode.window.createWebviewPanel(
-      'templateProcessorForm',
-      'Template Processor Input Form',
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true
-      }
-    );
+    const disposable = vscode.commands.registerCommand('templateprocessor.openForm', () => {
+        const panel = vscode.window.createWebviewPanel(
+            'templateProcessorForm',
+            'Template Processor Form',
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true
+            }
+        );
 
-    panel.webview.html = getWebviewContent();
+        panel.webview.html = getWebviewContent();
 
-    panel.webview.onDidReceiveMessage(
-      message => {
-        if (message.command === 'submit') {
-          const { ait, spk, ocpurl, servicePassword } = message;
+        panel.webview.onDidReceiveMessage(message => {
+            if (message.command === 'submitForm') {
+                vscode.window.showInformationMessage(`Received:
+AIT: ${message.ait}
+SPK: ${message.spk}
+Repository: ${message.repo}
+App Name: ${message.appName}
+Project: ${message.project}
+Cluster: ${message.cluster}
+Service ID: ${message.serviceId}
+Password: ${'*'.repeat(message.password.length)}`);
+            }
+        });
+    });
 
-          // Log to output channel
-          const output = vscode.window.createOutputChannel("Template Processor Logs");
-          output.appendLine(`AIT: ${ait}`);
-          output.appendLine(`SPK: ${spk}`);
-          output.appendLine(`OCP URL: ${ocpurl}`);
-          output.appendLine(`Service Password: ${'*'.repeat(servicePassword.length)}`);
-          output.show();
-
-          // Show info message
-          vscode.window.showInformationMessage(`Inputs received: AIT=${ait}, SPK=${spk}`);
-        }
-      },
-      undefined,
-      context.subscriptions
-    );
-  });
-
-  context.subscriptions.push(disposable);
+    context.subscriptions.push(disposable);
 }
 
 function getWebviewContent(): string {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <title>Template Processor Form</title>
-      <style>
-        body {
-          font-family: sans-serif;
-          padding: 20px;
-        }
-        label {
-          display: block;
-          margin-top: 10px;
-        }
-        input {
-          width: 100%;
-          padding: 5px;
-          margin-top: 5px;
-        }
-        button {
-          margin-top: 20px;
-          padding: 10px 15px;
-          font-size: 14px;
-        }
-      </style>
-    </head>
-    <body>
-      <h2>Enter Template Parameters</h2>
-      <label>AIT:
-        <input type="text" id="ait" />
-      </label>
-      <label>SPK:
-        <input type="text" id="spk" />
-      </label>
-      <label>OCP URL:
-        <input type="text" id="ocpurl" />
-      </label>
-      <label>Service Password:
-        <input type="password" id="servicePassword" />
-      </label>
-      <button onclick="submitForm()">Submit</button>
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Template Processor Inputs</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        label { display: block; margin-top: 10px; }
+        input { width: 100%; padding: 6px; }
+        button { margin-top: 20px; padding: 8px 16px; }
+    </style>
+</head>
+<body>
+    <h2>Template Processor Inputs</h2>
+    <form id="inputForm">
+        <label for="ait">AIT:</label>
+        <input type="text" id="ait" required>
 
-      <script>
+        <label for="spk">SPK:</label>
+        <input type="text" id="spk" required>
+
+        <label for="repo">Repository Name:</label>
+        <input type="text" id="repo" required>
+
+        <label for="appName">Application Name:</label>
+        <input type="text" id="appName" required>
+
+        <label for="project">Project Name:</label>
+        <input type="text" id="project" required>
+
+        <label for="cluster">Cluster Name:</label>
+        <input type="text" id="cluster" required>
+
+        <label for="serviceId">Service ID:</label>
+        <input type="text" id="serviceId" required>
+
+        <label for="password">Service Password:</label>
+        <input type="password" id="password" required>
+
+        <button type="submit">Submit</button>
+    </form>
+
+    <script>
         const vscode = acquireVsCodeApi();
-        function submitForm() {
-          const ait = document.getElementById('ait').value;
-          const spk = document.getElementById('spk').value;
-          const ocpurl = document.getElementById('ocpurl').value;
-          const servicePassword = document.getElementById('servicePassword').value;
-
-          vscode.postMessage({
-            command: 'submit',
-            ait,
-            spk,
-            ocpurl,
-            servicePassword
-          });
-        }
-      </script>
-    </body>
-    </html>
-  `;
+        document.getElementById('inputForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            vscode.postMessage({
+                command: 'submitForm',
+                ait: document.getElementById('ait').value,
+                spk: document.getElementById('spk').value,
+                repo: document.getElementById('repo').value,
+                appName: document.getElementById('appName').value,
+                project: document.getElementById('project').value,
+                cluster: document.getElementById('cluster').value,
+                serviceId: document.getElementById('serviceId').value,
+                password: document.getElementById('password').value
+            });
+        });
+    </script>
+</body>
+</html>`;
 }
 
 export function deactivate() {}
+
+
+
+{
+  "name": "template-processor-ui",
+  "displayName": "Template Processor UI",
+  "description": "Collect inputs using a VSCode dialog form",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "activationEvents": [
+    "onCommand:templateprocessor.openForm"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "templateprocessor.openForm",
+        "title": "Open Template Processor Form"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0",
+    "vscode-test": "^1.8.0"
+  }
+}
