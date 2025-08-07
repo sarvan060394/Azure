@@ -339,105 +339,107 @@ export function deactivate() {}
 import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('templateprocessor.openForm', () => {
-      const panel = vscode.window.createWebviewPanel(
-        'templateProcessorForm',
-        'Template Processor Form',
-        vscode.ViewColumn.Active, // shows as a side panel
-        {
-          enableScripts: true,
-          retainContextWhenHidden: false
+  let disposable = vscode.commands.registerCommand('templateProcessor.openForm', () => {
+    const panel = vscode.window.createWebviewPanel(
+      'templateProcessorForm',
+      'Template Processor Input Form',
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true
+      }
+    );
+
+    panel.webview.html = getWebviewContent();
+
+    panel.webview.onDidReceiveMessage(
+      message => {
+        if (message.command === 'submit') {
+          const { ait, spk, ocpurl, servicePassword } = message;
+
+          // Log to output channel
+          const output = vscode.window.createOutputChannel("Template Processor Logs");
+          output.appendLine(`AIT: ${ait}`);
+          output.appendLine(`SPK: ${spk}`);
+          output.appendLine(`OCP URL: ${ocpurl}`);
+          output.appendLine(`Service Password: ${'*'.repeat(servicePassword.length)}`);
+          output.show();
+
+          // Show info message
+          vscode.window.showInformationMessage(`Inputs received: AIT=${ait}, SPK=${spk}`);
         }
-      );
+      },
+      undefined,
+      context.subscriptions
+    );
+  });
 
-      panel.webview.html = getWebviewHtml();
-
-      panel.webview.onDidReceiveMessage(
-        message => {
-          if (message.command === 'submit') {
-            const { ait, spk, ocpurl } = message;
-
-            vscode.window.showInformationMessage(
-              `Received inputs:\nAIT: ${ait}\nSPK: ${spk}\nOCP URL: ${ocpurl}`
-            );
-
-            console.log(`[TemplateProcessor] AIT: ${ait}`);
-            console.log(`[TemplateProcessor] SPK: ${spk}`);
-            console.log(`[TemplateProcessor] OCPURL: ${ocpurl}`);
-          }
-        },
-        undefined,
-        context.subscriptions
-      );
-    })
-  );
+  context.subscriptions.push(disposable);
 }
 
-function getWebviewHtml(): string {
+function getWebviewContent(): string {
   return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Template Processor Inputs</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 1rem;
-    }
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Template Processor Form</title>
+      <style>
+        body {
+          font-family: sans-serif;
+          padding: 20px;
+        }
+        label {
+          display: block;
+          margin-top: 10px;
+        }
+        input {
+          width: 100%;
+          padding: 5px;
+          margin-top: 5px;
+        }
+        button {
+          margin-top: 20px;
+          padding: 10px 15px;
+          font-size: 14px;
+        }
+      </style>
+    </head>
+    <body>
+      <h2>Enter Template Parameters</h2>
+      <label>AIT:
+        <input type="text" id="ait" />
+      </label>
+      <label>SPK:
+        <input type="text" id="spk" />
+      </label>
+      <label>OCP URL:
+        <input type="text" id="ocpurl" />
+      </label>
+      <label>Service Password:
+        <input type="password" id="servicePassword" />
+      </label>
+      <button onclick="submitForm()">Submit</button>
 
-    h2 {
-      margin-bottom: 1rem;
-    }
+      <script>
+        const vscode = acquireVsCodeApi();
+        function submitForm() {
+          const ait = document.getElementById('ait').value;
+          const spk = document.getElementById('spk').value;
+          const ocpurl = document.getElementById('ocpurl').value;
+          const servicePassword = document.getElementById('servicePassword').value;
 
-    label {
-      display: block;
-      margin-bottom: 1rem;
-    }
-
-    input[type="text"] {
-      width: 100%;
-      padding: 8px;
-      box-sizing: border-box;
-    }
-
-    button {
-      padding: 8px 16px;
-      margin-top: 1rem;
-    }
-
-    .form {
-      width: 300px;
-    }
-  </style>
-</head>
-<body>
-  <div class="form">
-    <h2>Enter Parameters</h2>
-    <label>AIT: <input type="text" id="ait" /></label>
-    <label>SPK: <input type="text" id="spk" /></label>
-    <label>OCP URL: <input type="text" id="ocpurl" /></label>
-    <button onclick="submitForm()">Submit</button>
-  </div>
-
-  <script>
-    const vscode = acquireVsCodeApi();
-
-    function submitForm() {
-      const ait = document.getElementById('ait').value;
-      const spk = document.getElementById('spk').value;
-      const ocpurl = document.getElementById('ocpurl').value;
-
-      vscode.postMessage({
-        command: 'submit',
-        ait,
-        spk,
-        ocpurl
-      });
-    }
-  </script>
-</body>
-</html>
-`;
+          vscode.postMessage({
+            command: 'submit',
+            ait,
+            spk,
+            ocpurl,
+            servicePassword
+          });
+        }
+      </script>
+    </body>
+    </html>
+  `;
 }
+
+export function deactivate() {}
