@@ -220,50 +220,52 @@ if __name__ == "__main__":
 
 ****************** Extension ******************************
 {
-  "name": "template-processor-extension",
+  "name": "templateprocessor",
   "displayName": "Template Processor",
-  "description": "Collects AIT, SPK, and OCP URL via Webview UI",
+  "description": "Collect AIT, SPK, OCPURL and process",
   "version": "0.0.1",
-  "publisher": "your-name",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:templateprocessor.openForm"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onCommand:templateProcessor.openForm"],
   "contributes": {
     "commands": [
       {
-        "command": "templateProcessor.openForm",
-        "title": "Open Template Input Form"
+        "command": "templateprocessor.openForm",
+        "title": "Template Processor: Open Form"
       }
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "tsc -p ./",
     "compile": "tsc -p ./",
-    "watch": "tsc -w -p ./"
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
-    "typescript": "^4.9.5",
-    "vscode": "^1.1.37"
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.5",
+    "tslint": "^6.1.3",
+    "vscode-test": "^1.7.2"
   }
 }
-
 --------------
-
 import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-  const outputChannel = vscode.window.createOutputChannel("Template Processor Logs");
-
-  const disposable = vscode.commands.registerCommand("templateProcessor.openForm", () => {
+  const disposable = vscode.commands.registerCommand('templateprocessor.openForm', () => {
     const panel = vscode.window.createWebviewPanel(
-      "templateInput",
-      "Template Processor Input",
+      'templateProcessorForm',
+      'Template Processor Form',
       vscode.ViewColumn.One,
-      { enableScripts: true }
+      {
+        enableScripts: true
+      }
     );
 
     panel.webview.html = getWebviewHtml();
@@ -273,17 +275,15 @@ export function activate(context: vscode.ExtensionContext) {
         if (message.command === 'submit') {
           const { ait, spk, ocpurl } = message;
 
-          outputChannel.appendLine(`--- Template Inputs ---`);
-          outputChannel.appendLine(`AIT: ${ait}`);
-          outputChannel.appendLine(`SPK: ${spk}`);
-          outputChannel.appendLine(`OCP URL: ${ocpurl}`);
-          outputChannel.show();
+          const output = vscode.window.createOutputChannel("Template Processor Logs");
+          output.appendLine(`AIT: ${ait}`);
+          output.appendLine(`SPK: ${spk}`);
+          output.appendLine(`OCP URL: ${ocpurl}`);
+          output.show(true);
 
           vscode.window.showInformationMessage(
-            `Received:\nAIT: ${ait}\nSPK: ${spk}\nOCP URL: ${ocpurl}`
+            `Inputs received:\nAIT: ${ait}\nSPK: ${spk}\nOCP URL: ${ocpurl}`
           );
-
-          // Place logic here to use these values in your extension
         }
       },
       undefined,
@@ -296,42 +296,37 @@ export function activate(context: vscode.ExtensionContext) {
 
 function getWebviewHtml(): string {
   return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <title>Template Processor</title>
-    </head>
-    <body>
-      <h2>Enter Template Inputs</h2>
-      <label>AIT: <input type="text" id="ait" /></label><br><br>
-      <label>SPK: <input type="text" id="spk" /></label><br><br>
-      <label>OCP URL: <input type="text" id="ocpurl" /></label><br><br>
-      <button onclick="submit()">Submit</button>
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Template Input Form</title>
+  </head>
+  <body>
+    <h2>Enter Parameters</h2>
+    <label>AIT: <input type="text" id="ait" /></label><br>
+    <label>SPK: <input type="text" id="spk" /></label><br>
+    <label>OCP URL: <input type="text" id="ocpurl" /></label><br><br>
+    <button onclick="submitForm()">Submit</button>
 
-      <script>
-        const vscode = acquireVsCodeApi();
-        function submit() {
-          const ait = document.getElementById('ait').value;
-          const spk = document.getElementById('spk').value;
-          const ocpurl = document.getElementById('ocpurl').value;
+    <script>
+      const vscode = acquireVsCodeApi();
+      function submitForm() {
+        const ait = document.getElementById('ait').value;
+        const spk = document.getElementById('spk').value;
+        const ocpurl = document.getElementById('ocpurl').value;
 
-          vscode.postMessage({
-            command: 'submit',
-            ait,
-            spk,
-            ocpurl
-          });
-        }
-      </script>
-    </body>
-    </html>
-  `;
+        vscode.postMessage({
+          command: 'submit',
+          ait,
+          spk,
+          ocpurl
+        });
+      }
+    </script>
+  </body>
+  </html>`;
 }
 
 export function deactivate() {}
-
-
-
-
 
