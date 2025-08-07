@@ -470,3 +470,120 @@ export function deactivate() {}
     "vscode-test": "^1.8.0"
   }
 }
+
+
+----
+
+function getWebviewContent(): string {
+    return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Template Processor Form</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                padding: 20px;
+                background-color: #f4f4f4;
+                color: #333;
+            }
+
+            h1 {
+                text-align: center;
+                color: #007acc;
+                margin-bottom: 20px;
+            }
+
+            form {
+                background-color: #fff;
+                padding: 20px;
+                border-radius: 10px;
+                max-width: 500px;
+                margin: auto;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: bold;
+            }
+
+            input {
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 15px;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+
+            button {
+                width: 100%;
+                padding: 12px;
+                background-color: #007acc;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-size: 16px;
+                cursor: pointer;
+                transition: background-color 0.3s ease;
+            }
+
+            button:hover {
+                background-color: #005f9e;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Template Processor</h1>
+        <form id="templateForm">
+            <label for="ait">AIT:</label>
+            <input type="text" id="ait" name="ait" required>
+
+            <label for="spk">SPK:</label>
+            <input type="text" id="spk" name="spk" required>
+
+            <label for="repositoryName">Repository Name:</label>
+            <input type="text" id="repositoryName" name="repositoryName" required>
+
+            <label for="applicationName">Application Name:</label>
+            <input type="text" id="applicationName" name="applicationName" required>
+
+            <label for="projectName">Project Name:</label>
+            <input type="text" id="projectName" name="projectName" required>
+
+            <label for="clusterName">Cluster Name:</label>
+            <input type="text" id="clusterName" name="clusterName" required>
+
+            <label for="serviceId">Service ID:</label>
+            <input type="text" id="serviceId" name="serviceId" required>
+
+            <label for="servicePassword">Service Password:</label>
+            <input type="password" id="servicePassword" name="servicePassword" required>
+
+            <button type="submit">Submit</button>
+        </form>
+
+        <script>
+            const vscode = acquireVsCodeApi();
+            const form = document.getElementById('templateForm');
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const formData = {
+                    ait: document.getElementById('ait').value,
+                    spk: document.getElementById('spk').value,
+                    repositoryName: document.getElementById('repositoryName').value,
+                    applicationName: document.getElementById('applicationName').value,
+                    projectName: document.getElementById('projectName').value,
+                    clusterName: document.getElementById('clusterName').value,
+                    serviceId: document.getElementById('serviceId').value,
+                    servicePassword: document.getElementById('servicePassword').value,
+                };
+                vscode.postMessage({ command: 'submitForm', data: formData });
+            });
+        </script>
+    </body>
+    </html>`;
+}
