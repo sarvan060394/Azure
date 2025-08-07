@@ -629,3 +629,131 @@ function getWebviewContent(): string {
     </body>
     </html>`;
 }
+
+
+
+///?????
+
+function getWebviewContent() {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Template Input Form</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #1e1e1e;
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .form-container {
+      background-color: #2a2a2a;
+      padding: 25px 30px;
+      border-radius: 10px;
+      width: 380px;
+      box-shadow: 0px 0px 12px rgba(0,0,0,0.5);
+    }
+
+    .form-container h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #61dafb;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 4px;
+      font-size: 14px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 5px;
+      font-size: 14px;
+      background-color: #3a3a3a;
+      color: #ffffff;
+    }
+
+    input[type="submit"] {
+      margin-top: 20px;
+      background-color: #007acc;
+      color: white;
+      padding: 10px 15px;
+      font-size: 15px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    input[type="submit"]:hover {
+      background-color: #005f9e;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <h2>Template Processor</h2>
+    <form id="templateForm">
+      <label for="ait">AIT</label>
+      <input type="text" id="ait" name="ait" required />
+
+      <label for="spk">SPK</label>
+      <input type="text" id="spk" name="spk" required />
+
+      <label for="repo">Repository Name</label>
+      <input type="text" id="repo" name="repo" required />
+
+      <label for="appName">Application Name</label>
+      <input type="text" id="appName" name="appName" required />
+
+      <label for="projectName">Project Name</label>
+      <input type="text" id="projectName" name="projectName" required />
+
+      <label for="clusterName">Cluster Name</label>
+      <input type="text" id="clusterName" name="clusterName" required />
+
+      <label for="serviceId">Service ID</label>
+      <input type="text" id="serviceId" name="serviceId" required />
+
+      <label for="servicePassword">Service Password</label>
+      <input type="password" id="servicePassword" name="servicePassword" required />
+
+      <input type="submit" value="Submit" />
+    </form>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+
+    document.getElementById('templateForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const data = {
+        ait: document.getElementById('ait').value,
+        spk: document.getElementById('spk').value,
+        repo: document.getElementById('repo').value,
+        appName: document.getElementById('appName').value,
+        projectName: document.getElementById('projectName').value,
+        clusterName: document.getElementById('clusterName').value,
+        serviceId: document.getElementById('serviceId').value,
+        servicePassword: document.getElementById('servicePassword').value
+      };
+      vscode.postMessage({ command: 'submit', data });
+    });
+  </script>
+</body>
+</html>
+  `;
+}
+
