@@ -330,3 +330,114 @@ function getWebviewHtml(): string {
 
 export function deactivate() {}
 
+
+
+
+-----//////------
+
+
+import * as vscode from 'vscode';
+
+export function activate(context: vscode.ExtensionContext) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('templateprocessor.openForm', () => {
+      const panel = vscode.window.createWebviewPanel(
+        'templateProcessorForm',
+        'Template Processor Form',
+        vscode.ViewColumn.Active, // shows as a side panel
+        {
+          enableScripts: true,
+          retainContextWhenHidden: false
+        }
+      );
+
+      panel.webview.html = getWebviewHtml();
+
+      panel.webview.onDidReceiveMessage(
+        message => {
+          if (message.command === 'submit') {
+            const { ait, spk, ocpurl } = message;
+
+            vscode.window.showInformationMessage(
+              `Received inputs:\nAIT: ${ait}\nSPK: ${spk}\nOCP URL: ${ocpurl}`
+            );
+
+            console.log(`[TemplateProcessor] AIT: ${ait}`);
+            console.log(`[TemplateProcessor] SPK: ${spk}`);
+            console.log(`[TemplateProcessor] OCPURL: ${ocpurl}`);
+          }
+        },
+        undefined,
+        context.subscriptions
+      );
+    })
+  );
+}
+
+function getWebviewHtml(): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Template Processor Inputs</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 1rem;
+    }
+
+    h2 {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+
+    button {
+      padding: 8px 16px;
+      margin-top: 1rem;
+    }
+
+    .form {
+      width: 300px;
+    }
+  </style>
+</head>
+<body>
+  <div class="form">
+    <h2>Enter Parameters</h2>
+    <label>AIT: <input type="text" id="ait" /></label>
+    <label>SPK: <input type="text" id="spk" /></label>
+    <label>OCP URL: <input type="text" id="ocpurl" /></label>
+    <button onclick="submitForm()">Submit</button>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+
+    function submitForm() {
+      const ait = document.getElementById('ait').value;
+      const spk = document.getElementById('spk').value;
+      const ocpurl = document.getElementById('ocpurl').value;
+
+      vscode.postMessage({
+        command: 'submit',
+        ait,
+        spk,
+        ocpurl
+      });
+    }
+  </script>
+</body>
+</html>
+`;
+}
