@@ -75,3 +75,69 @@ def get_image_created_date_from_registry(image, registry_url, registry_token, ve
     except Exception as e:
         logger.exception(f"Exception in get_image_created_date_from_registry for {registry_url}/{image}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+------
+
+# Step: Process images to find older versions
+old_images_map = {}
+
+for image in all_images:
+    older_images = []
+    try:
+        logger.info(f"Processing image: {image}")
+
+        # --- Parse image into repo name and tag ---
+        image_name, current_tag = parse_image_name(image)  
+        logger.debug(f"Parsed image: repo={image_name}, tag={current_tag}")
+
+        # --- Get all tags for the repo with details (one API call) ---
+        tags_url = f"{registry_url}/v2/{image_name}/tags/list?n=100&details=true"
+        logger.debug(f"Fetching tags from: {tags_url}")
+
+        response = requests.get(tags_url, headers={"Authorization": f"Bearer {registry_token}"}, timeout=30)
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to get tags for {image_name}, status: {response.status_code}, body: {response.text}")
+
+        tags_data = response.json()
+        logger.debug(f"Tags data received for {image_name}: {tags_data}")
+
+        # --- Find creation date of the current running image ---
+        current_created_date = None
+        for tag_info in tags_data.get("tags", []):
+            if tag_info["name"] == current_tag:
+                current_created_date = tag_info.get("created")
+                break
+
+        if not current_created_date:
+            raise Exception(f"Creation date not found for current tag {current_tag} in {image_name}")
+
+        logger.info(f"Current created date for {image}: {current_created_date}")
+
+        # --- Collect images older than the current one ---
+        for tag_info in tags_data.get("tags", []):
+            tag_created = tag_info.get("created")
+            if tag_created and tag_created < current_created_date:
+                older_images.append({
+                    "image": f"{image_name}:{tag_info['name']}",
+                    "created_date": tag_created
+                })
+
+        old_images_map[image] = older_images
+        logger.info(f"Older images for {image}: {older_images}")
+
+    except Exception as e:
+        logger.error(f"Error processing image {image}: {str(e)}")
+        skipped_images.append({
+            "image": image,
+            "error": f"Failed to get registry info: {str(e)}"
+        })
+
+# old_images_map will now have:
+# {
+#   "running_image:tag": [
+#       {"image": "repo/image:oldtag", "created_date": "2023-05-12T08:15:00Z"},
+#       ...
+#   ]
+# }
