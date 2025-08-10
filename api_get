@@ -1613,3 +1613,12 @@ def remove_statefulset(dyn_client, namespace, name):
         logger.error(f"Error removing StatefulSet: {e}")
         raise HTTPException(status_code=500, detail=f"Error removing StatefulSet: {e}")
 
+
+
+
+-----
+
+curl -k -u "<username>:<password>" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=<username>" \
+  "https://<registry_url>/artifactory/api/security/token"
