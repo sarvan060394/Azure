@@ -2,3 +2,71 @@ curl -k \
   -H "Authorization: Bearer <access_token>" \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
   "https://<registry_url>/v2/<repo>/<image_name>/manifests/<tag>"
+
+
+import requests
+import logging
+from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
+
+def get_image_created_date_from_registry(image, registry_url, registry_token, verify_ssl=False):
+    """
+    Returns the created date of the given image from the registry.
+    Supports only Bearer token authentication.
+    """
+    try:
+        # --- Ensure registry_url has scheme ---
+        if not registry_url.startswith("http"):
+            registry_url = f"https://{registry_url}"
+
+        # --- Parse image name and tag using existing helper ---
+        image_name, tag = parse_image_name(image)
+        logger.info(f"Fetched image_name: {image_name}, tag: {tag} for image: {image}")
+
+        # --- Prepare headers ---
+        headers = {
+            "Accept": "application/vnd.docker.distribution.manifest.v2+json",
+            "Authorization": f"Bearer {registry_token}"
+        }
+
+        # --- Step 1: Get manifest ---
+        manifest_url = f"{registry_url}/v2/{image_name}/manifests/{tag}"
+        logger.info(f"Fetching manifest from {manifest_url}")
+        resp = requests.get(manifest_url, headers=headers, verify=verify_ssl)
+
+        if resp.status_code != 200:
+            logger.error(f"Failed to get manifest for {image}: {resp.text}")
+            raise HTTPException(status_code=resp.status_code, detail=f"Manifest fetch failed: {resp.text}")
+
+        manifest_data = resp.json()
+
+        # --- Step 2: Extract config digest ---
+        try:
+            config_digest = manifest_data["config"]["digest"]
+        except KeyError:
+            logger.error(f"No config digest found in manifest for {image}")
+            raise HTTPException(status_code=500, detail="Invalid manifest format: missing config digest")
+
+        # --- Step 3: Get config blob (contains created date) ---
+        config_url = f"{registry_url}/v2/{image_name}/blobs/{config_digest}"
+        logger.info(f"Fetching config blob from {config_url}")
+        resp = requests.get(config_url, headers=headers, verify=verify_ssl)
+
+        if resp.status_code != 200:
+            logger.error(f"Failed to get config blob for {image}: {resp.text}")
+            raise HTTPException(status_code=resp.status_code, detail=f"Config blob fetch failed: {resp.text}")
+
+        config_data = resp.json()
+        created_date = config_data.get("created")
+
+        if not created_date:
+            logger.warning(f"No 'created' field found in config blob for {image}")
+            raise HTTPException(status_code=500, detail="No created date found in image config")
+
+        logger.info(f"Image {image} was created at {created_date}")
+        return created_date
+
+    except Exception as e:
+        logger.exception(f"Exception in get_image_created_date_from_registry for {registry_url}/{image}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
