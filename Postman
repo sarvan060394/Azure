@@ -265,3 +265,81 @@ def process_images(all_images, registry_url: str, token: str):
         except Exception as e:
             print(f"Unexpected error for {image}: {e}")
 
+
+
+
+------------
+
+
+def _fetch_tags_list(url: str, headers: dict):
+    """
+    Fetch the list of tags for a given image from the registry.
+    Always returns parsed JSON (dict) if successful.
+    Raises HTTPException on error.
+    """
+    try:
+        resp = requests.get(url, headers=headers, verify=False)
+        logger.info(f"_fetch_tags_list: status_code={resp.status_code}, url={url}")
+
+        if resp.status_code == 404:
+            logger.error(f"Repository not found at {url}")
+            raise HTTPException(status_code=404, detail=f"Repository not found: {url}")
+
+        if resp.status_code == 406:
+            logger.error(f"406 Not Acceptable for url: {url}")
+            return None  # Caller will decide to break loop
+
+        resp.raise_for_status()
+
+        if "application/json" not in resp.headers.get("Content-Type", ""):
+            logger.error(f"Expected JSON but got Content-Type={resp.headers.get('Content-Type')}")
+            raise HTTPException(status_code=500, detail="Registry did not return JSON")
+
+        try:
+            json_result = resp.json()
+            logger.debug(f"_fetch_tags_list: JSON keys={list(json_result.keys())}")
+            return json_result
+        except ValueError as e:
+            logger.error(f"_fetch_tags_list: Failed to parse JSON from {url}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to parse JSON: {str(e)}")
+
+    except requests.RequestException as e:
+        logger.error(f"RequestException for url {url}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}")
+
+
+
+def get_all_images_before_cutoff(registry_url: str, image_name: str, cutoff_date: datetime, token: str):
+    """
+    Returns a list of all images created before cutoff_date for the given repository.
+    Handles pagination so no image is missed.
+    """
+    logger.info(f"Getting all images for {image_name} in registry {registry_url} before cutoff date {cutoff_date}")
+    headers = {"Authorization": f"Bearer {token}"}
+    older_images = []
+    next_url = f"{registry_url}/v2/{image_name}/tags/list?n=100&details=true"
+
+    while next_url:
+        data = _fetch_tags_list(next_url, headers)
+
+        if data is None:  # 406 error case
+            logger.warning(f"Skipping tags fetch due to 406 error for url: {next_url}")
+            break
+
+        tags_list = _extract_tags_list(data)
+
+        for tag_info in tags_list:
+            result = _parse_tag_info(tag_info, cutoff_date)
+            if result:
+                older_images.append(result)
+
+        # Extract pagination link if present
+        link_header = requests.head(next_url, headers=headers, verify=False).headers.get("Link")
+        if link_header and 'rel="next"' in link_header:
+            next_url = link_header.split("<")[1].split(">")[0]
+            logger.debug(f"Pagination detected, next URL: {next_url}")
+        else:
+            next_url = None
+
+    logger.info(f"Total older images found for {image_name}: {len(older_images)}")
+    return older_images
