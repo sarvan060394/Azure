@@ -3,6 +3,11 @@ curl -k \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
   "https://<registry_url>/v2/<repo>/<image_name>/manifests/<tag>"
 
+curl -X GET \
+  "https://registry-nonprod.sdi.corp.bankofamerica.com/v2/73717/kube-kafka-rest-proxy-service/tags/list?n=100&details=true" \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer <YOUR_TOKEN>"
+
 
 import requests
 import logging
