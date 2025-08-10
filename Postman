@@ -141,3 +141,127 @@ for image in all_images:
 #       ...
 #   ]
 # }
+
+
+____________________________________________________________________________________________
+
+import requests
+from datetime import datetime
+from fastapi import HTTPException
+
+def parse_image_name(image: str) -> tuple[str, str, str]:
+    """
+    Parses an image string into (image_name, reference_type, reference_value).
+
+    Handles:
+        registry.com/repo/image:tag       -> ('repo/image', 'tag', 'v1.0.0')
+        registry.com/repo/image@sha256:.. -> ('repo/image', 'digest', 'sha256:...')
+        repo/image:tag                    -> ('repo/image', 'tag', 'v1.0.0')
+        repo/image                        -> ('repo/image', 'tag', 'latest')
+    """
+    parts = image.split('/')
+    # Remove registry prefix if present
+    if len(parts) > 2:
+        image_path = '/'.join(parts[1:])
+    else:
+        image_path = parts[-1]
+
+    if '@' in image_path:
+        image_name, digest = image_path.split('@', 1)
+        return image_name, 'digest', digest
+    elif ':' in image_path:
+        image_name, tag = image_path.rsplit(':', 1)
+        return image_name, 'tag', tag
+    else:
+        return image_path, 'tag', 'latest'
+
+
+def get_image_created_date(registry_url: str, image_name: str, reference: str, token: str) -> datetime:
+    """
+    Gets the created date of a given image tag/digest from the registry.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    manifest_url = f"{registry_url}/v2/{image_name}/manifests/{reference}"
+
+    resp = requests.get(manifest_url, headers=headers)
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail=f"Image {image_name}:{reference} not found in registry")
+    resp.raise_for_status()
+
+    manifest = resp.json()
+
+    # Handle schema v2
+    if "history" in manifest:  # schema v1 fallback
+        history_item = manifest["history"][0]
+        created_str = requests.utils.json.loads(history_item["v1Compatibility"])["created"]
+    else:  # schema v2
+        config_digest = manifest["config"]["digest"]
+        config_url = f"{registry_url}/v2/{image_name}/blobs/{config_digest}"
+        config_resp = requests.get(config_url, headers=headers)
+        config_resp.raise_for_status()
+        created_str = config_resp.json()["created"]
+
+    return datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+
+
+def get_all_images_before_cutoff(registry_url: str, image_name: str, cutoff_date: datetime, token: str):
+    """
+    Returns a list of all images created before cutoff_date for the given repository.
+    Handles pagination so no image is missed.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    older_images = []
+
+    # Pagination
+    next_url = f"{registry_url}/v2/{image_name}/tags/list?n=100&details=true"
+
+    while next_url:
+        resp = requests.get(next_url, headers=headers)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Repository {image_name} not found in registry")
+        resp.raise_for_status()
+
+        data = resp.json()
+
+        for tag_info in data.get("tags", []):
+            created_str = tag_info.get("created")
+            if created_str:
+                created_date = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                if created_date < cutoff_date:
+                    older_images.append({
+                        "tag": tag_info["name"],
+                        "created": created_str
+                    })
+
+        # Handle pagination via Link header
+        link_header = resp.headers.get("Link")
+        if link_header and 'rel="next"' in link_header:
+            next_url = link_header.split("<")[1].split(">")[0]
+        else:
+            next_url = None
+
+    return older_images
+
+
+def process_images(all_images, registry_url: str, token: str):
+    """
+    For each image in all_images:
+      1. Get created date.
+      2. Find all images created before it.
+    """
+    for image in all_images:
+        try:
+            img_name, ref_type, ref_value = parse_image_name(image)
+            created_date = get_image_created_date(registry_url, img_name, ref_value, token)
+            older_images = get_all_images_before_cutoff(registry_url, img_name, created_date, token)
+
+            print(f"\nImage: {image} (Created: {created_date})")
+            print("Older images:")
+            for img in older_images:
+                print(f"  {img['tag']} - {img['created']}")
+
+        except HTTPException as e:
+            print(f"Error for {image}: {e.detail}")
+        except Exception as e:
+            print(f"Unexpected error for {image}: {e}")
+
