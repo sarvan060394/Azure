@@ -1,0 +1,4 @@
+curl -k \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+  "https://<registry_url>/v2/<repo>/<image_name>/manifests/<tag>"
