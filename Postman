@@ -8,6 +8,14 @@ curl -X GET \
   -H "Accept: application/json" \
   -H "Authorization: Bearer <YOUR_TOKEN>"
 
+https://<your-jfrog-domain>/artifactory/api/search/aql
+Authorization: Bearer <your-access-token>
+Content-Type: text/plain
+items.find({
+  "repo": "my-docker-repo",
+  "path": {"$match": "myfolder/*"}
+})
+
 
 import requests
 import logging
