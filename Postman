@@ -28,9 +28,146 @@ items.find({
 })
 .include("name","repo","path","created","size","modified")
 
+--------------------------------------------------------
+
+import requests
+from datetime import datetime
+
+def parse_image_path(image_url):
+    """
+    Extract registry host, path (like 73717/imagename), and tag from image URL.
+    Example:
+      registry.sdi.com/73717/imagename:tag
+      registry.sdi.com/73717/imagename@sha256:token
+    """
+    parts = image_url.split("/", 1)
+    if len(parts) < 2:
+        raise ValueError(f"Invalid image URL format: {image_url}")
+
+    registry_host = parts[0]
+    remainder = parts[1]
+
+    if ":" in remainder:
+        path, tag = remainder.rsplit(":", 1)
+    elif "@" in remainder:
+        path, tag = remainder.rsplit("@", 1)
+    else:
+        path, tag = remainder, None
+
+    return registry_host, path, tag
 
 
+def get_created_date_for_image(image_url, repo, registry_url, registry_token):
+    """Get created date for the given image tag from JFrog."""
+    registry_host, path, tag = parse_image_path(image_url)
+    if not tag:
+        raise ValueError(f"No tag found in {image_url}")
 
+    aql_query = f'''
+items.find({{
+  "repo": "{repo}",
+  "path": "{path}/{tag}",
+  "name": "manifest.json"
+}}).include("created")
+'''
+    headers = {
+        "Authorization": f"Bearer {registry_token}",
+        "Content-Type": "text/plain"
+    }
+    resp = requests.post(f"{registry_url}/api/search/aql", data=aql_query, headers=headers)
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
+    if not results:
+        return None, registry_host, path
+    return results[0]["created"], registry_host, path
+
+
+def get_images_before_cutoff(registry_host, repo, folder_path, cutoff_date, registry_url, registry_token):
+    """List all images in the folder created before the cutoff_date."""
+    cutoff_iso = cutoff_date.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    aql_query = f'''
+items.find({{
+  "repo": "{repo}",
+  "path": {{"$match": "{folder_path}/*"}},
+  "created": {{"$before": "{cutoff_iso}"}},
+  "name": "manifest.json"
+}}).include("path","created")
+'''
+    headers = {
+        "Authorization": f"Bearer {registry_token}",
+        "Content-Type": "text/plain"
+    }
+    resp = requests.post(f"{registry_url}/api/search/aql", data=aql_query, headers=headers)
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
+
+    images_with_tags = []
+    for item in results:
+        path_parts = item["path"].split("/")
+        if len(path_parts) >= 2:
+            tag = path_parts[-1]
+            base_path = "/".join(path_parts[:-1])
+            image_str = f"{registry_host}/{base_path}:{tag}"
+            images_with_tags.append(image_str)
+    return images_with_tags
+
+
+def process_images(all_images, repo, registry_url, registry_token):
+    """
+    For each image:
+      - Find its created date
+      - Get all older images in same folder
+      - Return structured results with full image:tag
+    """
+    final_results = []
+
+    for image in all_images:
+        created_str, registry_host, folder_path = get_created_date_for_image(image, repo, registry_url, registry_token)
+        if not created_str:
+            final_results.append({
+                "image": image,
+                "cutoff_date": None,
+                "older_images_count": 0,
+                "older_images": []
+            })
+            continue
+
+        cutoff_dt = datetime.strptime(created_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+        older_images = get_images_before_cutoff(registry_host, repo, folder_path, cutoff_dt, registry_url, registry_token)
+
+        final_results.append({
+            "image": image,
+            "cutoff_date": cutoff_dt.isoformat(),
+            "older_images_count": len(older_images),
+            "older_images": older_images
+        })
+
+    return final_results
+
+
+# Example usage
+if __name__ == "__main__":
+    all_images = [
+        "registry.sdi.com/73717/kubes-kafka-rest:20250702040505",
+        "registry.sdi.com/73717/another-image:20250615010101"
+    ]
+
+    results = process_images(
+        all_images,
+        repo="registry-local-docker-nonprod",
+        registry_url="https://registry-nonprod.sdi.corp.bankofamerica.com/artifactory",
+        registry_token="<your-bearer-token>"
+    )
+
+    for res in results:
+        print(f"\nImage: {res['image']}")
+        print(f"Cutoff Date: {res['cutoff_date']}")
+        print(f"Older Images Count: {res['older_images_count']}")
+        for img in res['older_images']:
+            print(f"  {img}")
+
+
+----------------------------------------------------------
 import requests
 from datetime import datetime
 
