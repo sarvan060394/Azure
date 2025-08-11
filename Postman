@@ -15,6 +15,11 @@ items.find({
   "repo": "my-docker-repo",
   "path": {"$match": "myfolder/*"}
 })
+items.find({
+  "repo": "registry-local-nonprod",
+  "path": {"$match": "737/kafka-ait*"},
+  "created": {"$before": "2025-08-01T00:00:00.000Z"}
+}).include("name","repo","path","created","size","modified")
 
 
 import requests
